@@ -4,10 +4,11 @@ CPU-only native AVX-512 backends and reproducible evaluation scripts for the
 [VAST-AI-Research/TripoSplat](https://github.com/VAST-AI-Research/TripoSplat)
 flow model.
 
-> **This repository does not contain a quantized TripoSplat model.** The
-> validated `q8` kernel name means an eight-query execution block
-> (`QUERY_BLOCK=8`), not 8-bit weights or activations. Model weights, Q/K/V,
-> softmax, and Linear execution remain float32 in the reported strict run.
+> **This repository does not redistribute TripoSplat checkpoints.** The
+> validated `q8` baseline name means an eight-query execution block
+> (`QUERY_BLOCK=8`), not 8-bit weights or activations. The reported strict s20
+> baseline remains float32. Separate NF8 and residual-NF8 runners implement
+> packed nonlinear weight execution and are reported as experimental below.
 
 Japanese documentation: [README_ja.md](README_ja.md)
 
@@ -40,6 +41,11 @@ The detailed evidence and stage timing are in
 - GELU(tanh), SiLU, LayerNorm, multi-head RMSNorm, and RoPE kernels.
 - Block modulation, residual, RePo, position/timestep embedding kernels.
 - Native CFG and Euler sampler updates.
+- CPU background removal, DINO/Flux-VAE condition encoding, deterministic
+  noise generation, Gaussian decoding, low-memory export, reference rendering,
+  and a standalone WebGL viewer.
+- Packed nonlinear NF8 and two/three-stage residual-NF8 AVX-512 GEMM for all
+  206 Flow-model Linear modules, without retaining float32 Linear weights.
 - Strict wrappers that raise on unsupported execution instead of silently
   falling back to PyTorch.
 - Reproducible latent/camera comparison against a float32 baseline.
@@ -48,17 +54,28 @@ The SDPA keeps full attention semantics. It does not use top-k attention,
 token pruning, low-rank attention, or a materialized `Lq x Lk` attention
 matrix.
 
-## Scope
+## Scope and quantization status
 
-The validated result starts from prepared condition and noise NPZ files and
-covers the Flow model plus CFG/Euler sampler. It does not claim a completed
-CPU-only end-to-end pipeline for DINO image encoding, background removal,
-Gaussian decoding, or rendering.
+The float32 strict result above covers the Flow model plus CFG/Euler sampler.
+The repository now also includes a CPU-only end-to-end runner from a raw image
+through background removal, DINO/Flux-VAE condition encoding, s20 Flow
+inference, Gaussian decoding, PLY/SPLAT export, reference rendering, and a
+standalone WebGL viewer. One 1024-pixel validation run completed with 262,144
+Gaussians and preserved the same Flow quality metrics as the strict baseline.
 
-Experimental fake/dynamic/nonlinear quantization options remain in the
-research runner for controlled comparisons, but none of them are enabled by
-[`scripts/run_s20_strict.sh`](scripts/run_s20_strict.sh). Whole-model nonlinear
-quantization and packed low-bit GEMM remain future work.
+Packed nonlinear quantization is implemented, but it is not yet the validated
+replacement for the float32 s20 result:
+
+| Linear weights | Packed/original bytes | 1-step combined RMSE | Runtime status |
+|---|---:|---:|---|
+| NF8, one stage (8 bits) | 25.15% | 2.51245e-2 | rejected on quality |
+| Residual NF8, two stages (16 bits) | 50.20% | 4.50681e-4 | rejected on quality |
+| Residual NF8, three stages (24 bits) | 75.26% | 8.12530e-6 | passed the 1-step gate; s20 pending |
+
+All three paths execute packed codebook indices directly in AVX-512 GEMM and
+reported zero Linear fallbacks. The three-stage 1-step run took 507.736 s,
+including 332.770 s in native packed Linear calls, so memory reduction is
+demonstrated but practical s20 speed is not yet established.
 
 ## Requirements
 
@@ -109,6 +126,31 @@ Tune them for each CPU and run the quality comparison again.
 The runner writes latent/camera NPZ data and a manifest. It does not claim that
 the final Gaussian decoder or viewer has run.
 
+## CPU end-to-end run
+
+```bash
+INPUT=/path/to/source.png \
+REFERENCE_NPZ=/path/to/float32_s20/base_latent.npz \
+bash scripts/run_cpu_end_to_end_strict.sh
+```
+
+Use `RESUME=1` to continue a run after a completed stage. The runner performs a
+capacity probe before allocating outputs because checkpoints and the Python
+environment can leave little room on quota-limited filesystems.
+
+## Packed nonlinear quantization
+
+```bash
+# One-stage NF8 or two/three-stage residual NF8 evaluation.
+STEPS=1 bash scripts/run_nf8_strict.sh
+STEPS=1 RNF8_STAGES=3 bash scripts/run_rnf8_strict.sh
+```
+
+These runners require matching deterministic float32 reference NPZ files.
+Advance to longer sampler runs only after checking the generated comparison
+JSON; the one-stage and two-stage results above are intentionally documented as
+failed quality experiments.
+
 ## SDPA microbenchmark
 
 ```bash
@@ -128,6 +170,9 @@ set.
 - `scripts/native_*_patch.py`: strict PyTorch integration boundaries.
 - `scripts/build_all.sh`: builds all libraries used by the strict run.
 - `scripts/run_s20_strict.sh`: parameter-locked validation entry point.
+- `scripts/run_cpu_end_to_end_strict.sh`: raw-image to Gaussian/viewer pipeline.
+- `scripts/run_nf8_strict.sh`, `scripts/run_rnf8_strict.sh`: packed nonlinear
+  quantization evaluation entry points.
 - `scripts/run_triposplat_quantized_param_batch.py`: research and trace runner.
 - `docs/`: Japanese model, equation, parameter, milestone, and validation docs.
 

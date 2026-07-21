@@ -34,6 +34,9 @@ def apply_triposplat_native_linear_avx512_patch(
     full_kernel = lib.triposplat_gemm_f32_avx512
     full_kernel.argtypes = [ctypes.c_void_p] * 4 + [ctypes.c_int] * 6
     full_kernel.restype = ctypes.c_int
+    tail_kernel = lib.triposplat_gemm_f32_avx512_tail
+    tail_kernel.argtypes = [ctypes.c_void_p] * 4 + [ctypes.c_int] * 6
+    tail_kernel.restype = ctypes.c_int
     range_kernel = lib.triposplat_gemm_f32_avx512_range
     range_kernel.argtypes = [ctypes.c_void_p] * 4 + [ctypes.c_int] * 8
     range_kernel.restype = ctypes.c_int
@@ -89,7 +92,8 @@ def apply_triposplat_native_linear_avx512_patch(
             rows = int(x2.shape[0])
             out = torch.empty((rows, int(self.out_features)), dtype=torch.float32, device=x.device)
             started = time.perf_counter()
-            status = int(full_kernel(
+            selected_kernel = tail_kernel if int(self.out_features) % 16 else full_kernel
+            status = int(selected_kernel(
                 x2.data_ptr(), self._native_avx512_weight_t.data_ptr(), self._native_avx512_bias.data_ptr(), out.data_ptr(),
                 rows, int(self.in_features), int(self.out_features), int(self.in_features), int(self.out_features), int(threads),
             ))
@@ -155,7 +159,7 @@ def apply_triposplat_native_linear_avx512_patch(
     return {
         "enabled": bool(selected), "kind": "native_f32_avx512_full_and_range_linear_patch",
         "library_path": lib_path.as_posix(),
-        "symbols": ["triposplat_gemm_f32_avx512", "triposplat_gemm_f32_avx512_range"],
+        "symbols": ["triposplat_gemm_f32_avx512", "triposplat_gemm_f32_avx512_range", "triposplat_gemm_f32_avx512_tail"],
         "threads": int(threads), "strict": bool(strict), "include_regex": include_regex,
         "exclude_regex": exclude_regex, "selected_count": len(selected), "selected": selected,
         "selected_dims": selected_dims, "skipped_count": len(skipped), "skipped": skipped,

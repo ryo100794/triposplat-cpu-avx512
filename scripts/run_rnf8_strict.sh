@@ -7,13 +7,15 @@ TRIPOSPLAT_REPO="${TRIPOSPLAT_REPO:-${PROJECT_ROOT}/vendor/TripoSplat}"
 TRIPOSPLAT_CKPTS="${TRIPOSPLAT_CKPTS:-${PROJECT_ROOT}/models/TripoSplat/ckpts}"
 MODEL_THREADS="${MODEL_THREADS:-8}"
 SDPA_THREADS="${SDPA_THREADS:-4}"
-RUN_ID="${RUN_ID:-cpu_avx512_q8_strict_s20_g3_1024}"
+STEPS="${STEPS:-1}"
+RNF8_STAGES="${RNF8_STAGES:-2}"
+RUN_ID="${RUN_ID:-cpu_avx512_rnf8x${RNF8_STAGES}_strict_s${STEPS}_g3_1024}"
 INPUT="${INPUT:-${PROJECT_ROOT}/inputs/prepared_rgb.webp}"
 CONDITION_NPZ="${CONDITION_NPZ:-${PROJECT_ROOT}/inputs/condition_1024.npz}"
 NOISE_NPZ="${NOISE_NPZ:-${PROJECT_ROOT}/inputs/noise_1024_seed0.npz}"
-REFERENCE_NPZ="${REFERENCE_NPZ:-${PROJECT_ROOT}/inputs/reference_float32_s20.npz}"
+REFERENCE_NPZ="${REFERENCE_NPZ:-${PROJECT_ROOT}/inputs/reference_float32_s${STEPS}.npz}"
 OUTPUT_DIR="${OUTPUT_DIR:-${PROJECT_ROOT}/artifacts/quant_flow/${RUN_ID}}"
-COMPARE_JSON="${COMPARE_JSON:-${PROJECT_ROOT}/artifacts/audits/${RUN_ID}_vs_float32_s20.json}"
+COMPARE_JSON="${COMPARE_JSON:-${PROJECT_ROOT}/artifacts/audits/${RUN_ID}_vs_float32_s${STEPS}.json}"
 CAPACITY_CHECK_BYTES="${CAPACITY_CHECK_BYTES:-67108864}"
 
 for path in "${VENV_PY}" "${TRIPOSPLAT_REPO}/triposplat.py" "${INPUT}" "${CONDITION_NPZ}" "${NOISE_NPZ}" "${REFERENCE_NPZ}"; do
@@ -21,7 +23,7 @@ for path in "${VENV_PY}" "${TRIPOSPLAT_REPO}/triposplat.py" "${INPUT}" "${CONDIT
 done
 
 required_libraries=(
-  libtriposplat_gemm_f32_avx512.so
+  libtriposplat_gemm_rnf8_avx512.so
   libtriposplat_gelu_avx512.so
   libtriposplat_activations_avx512.so
   libtriposplat_norm_rope_avx512.so
@@ -52,10 +54,11 @@ env \
   TORCH_NUM_THREADS="${MODEL_THREADS}" \
   TORCH_NUM_INTEROP_THREADS=1 \
   ATEN_CPU_CAPABILITY=avx2 \
+  TRIPOSPLAT_RNF8_STAGES="${RNF8_STAGES}" \
   TRIPOSPLAT_NATIVE_SDPA_THREADS="${SDPA_THREADS}" \
   TRIPOSPLAT_NATIVE_SDPA_LIBRARY=artifacts/backends/libtriposplat_sdpa_avx512_exact_q8.so \
   TRIPOSPLAT_NATIVE_SDPA_SYMBOL=triposplat_sdpa_f32_avx512_exact_q8 \
-  "${VENV_PY}" scripts/run_triposplat_quantized_param_batch.py \
+  "${VENV_PY}" scripts/run_triposplat_rnf8_param_batch.py \
     --output-dir "${OUTPUT_DIR}" \
     --input "${INPUT}" \
     --condition-npz "${CONDITION_NPZ}" \
@@ -63,7 +66,7 @@ env \
     --canvas-size 1024 \
     --model-dtype float32 \
     --device cpu \
-    --variants base:20:3.0:3.0 \
+    --variants "base:${STEPS}:3.0:3.0" \
     --seed 0 \
     --static-condition-cache \
     --position-embed-cache \
@@ -79,7 +82,7 @@ env \
     --selective-final-block \
     --native-avx512-linear \
     --native-avx512-linear-include-regex '.*' \
-    --native-avx512-linear-library artifacts/backends/libtriposplat_gemm_f32_avx512.so \
+    --native-avx512-linear-library artifacts/backends/libtriposplat_gemm_rnf8_avx512.so \
     --native-avx512-linear-threads "${MODEL_THREADS}" \
     --native-avx512-linear-strict \
     --native-avx512-gelu \

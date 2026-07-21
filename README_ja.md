@@ -3,9 +3,10 @@
 [VAST-AI-Research/TripoSplat](https://github.com/VAST-AI-Research/TripoSplat)
 のflow modelをCPU-onlyで実行するためのnative AVX-512 backendと検証scriptです。
 
-> **このrepositoryは量子化済みTripoSplat modelを含みません。** `q8` は8-bit
-> 量子化ではなく、8本のqueryを同時処理する `QUERY_BLOCK=8` を意味します。
-> 合格したstrict s20ではmodel weight、Q/K/V、softmax、Linear演算はfloat32です。
+> **このrepositoryはTripoSplat checkpointを再配布しません。** 合格したbaselineの
+> `q8` は8-bit量子化ではなく、8本のqueryを同時処理する `QUERY_BLOCK=8` を
+> 意味します。strict s20 baselineはfloat32です。packed非線形weightを実行する
+> NF8/RNF8 runnerは別の実験実装として下記に結果を記載します。
 
 ## 検証結果
 
@@ -37,24 +38,35 @@ upstream commit `a78fa12d06dbf1381ca548bfac32bb68cb8c451d`、AMD EPYC
 - GELU(tanh)、SiLU、LayerNorm、multi-head RMSNorm、RoPE
 - modulation、residual、RePo、position/timestep embedding
 - native CFG、Euler sampler
+- CPU背景除去、DINO/Flux-VAE condition encode、決定的noise生成、Gaussian decode、
+  low-memory export、reference render、単一WebGL viewer
+- Flow modelの全206 Linearを対象に、float32 Linear weightを保持しないpacked NF8、
+  2段/3段residual-NF8 AVX-512 GEMM
 - 未対応時にPyTorchへ黙って戻らず例外にするstrict wrapper
 - 元のfloat32 latent/cameraに対する品質比較
 
 SDPAはfull attentionの意味を維持します。top-k、token削減、low-rank attention、
 巨大な `Lq x Lk` attention matrixは使いません。
 
-## 量子化について
+## 検証境界と量子化状況
 
-合格したs20は量子化modelではありません。研究runnerにはfake quant、dynamic
-quantization、非線形int4などの比較用optionが残っていますが、
-[`scripts/run_s20_strict.sh`](scripts/run_s20_strict.sh) はそれらを有効化しません。
-model全体の非線形量子化とpacked low-bit GEMMは未達です。
+上表のfloat32 strict結果はFlow modelとCFG/Euler samplerを対象とします。現在は
+raw画像からCPU背景除去、DINO/Flux-VAE condition encode、s20 Flow推論、Gaussian
+decode、PLY/SPLAT export、reference render、単一WebGL viewerまで実行するCPU-only
+end-to-end runnerも実装済みです。1024 pixel、262,144 Gaussiansの1検証runが完走し、
+Flow部分はstrict baselineと同じ品質指標を維持しました。
 
-## 検証境界
+packed非線形量子化は実装済みですが、float32 s20を置き換える品質合格には未到達です。
 
-今回の実測は準備済みcondition NPZとnoise NPZから始まり、flow modelとCFG/Euler
-samplerを対象とします。DINO画像encode、背景除去、Gaussian decode、rendererを
-含むend-to-end CPU完了を主張するものではありません。
+| Linear weight | packed/original byte | 1-step combined RMSE | 判定 |
+|---|---:|---:|---|
+| 1段NF8（8 bit） | 25.15% | 2.51245e-2 | 品質不合格 |
+| 2段residual NF8（16 bit） | 50.20% | 4.50681e-4 | 品質不合格 |
+| 3段residual NF8（24 bit） | 75.26% | 8.12530e-6 | 1-step合格、s20未実施 |
+
+全方式がcodebook indexをpacked状態のままAVX-512 GEMMで実行し、Linear fallbackは
+0でした。3段方式の1-stepは全体507.736秒、native packed Linear 332.770秒です。
+weight memory削減は確認済みですが、実用的なs20速度は未確立です。
 
 ## 必要環境
 
@@ -98,6 +110,27 @@ bash scripts/run_s20_strict.sh
 測定し、変更後は必ず品質比較をやり直してください。runnerの出力はlatent/camera
 NPZとmanifestであり、最終Gaussian生成まで完了したという意味ではありません。
 
+## CPU end-to-end
+
+```bash
+INPUT=/path/to/source.png \
+REFERENCE_NPZ=/path/to/float32_s20/base_latent.npz \
+bash scripts/run_cpu_end_to_end_strict.sh
+```
+
+完了済みstageから再開するときは `RESUME=1` を指定します。quota制限環境で途中の
+zero-byte出力を防ぐため、runnerは出力確保前にcapacity probeを行います。
+
+## packed非線形量子化
+
+```bash
+STEPS=1 bash scripts/run_nf8_strict.sh
+STEPS=1 RNF8_STAGES=3 bash scripts/run_rnf8_strict.sh
+```
+
+決定的な同条件のfloat32 reference NPZが必要です。生成される比較JSONを確認し、
+品質gateを通過した構成だけを長いsampler runへ進めます。
+
 ## SDPA単体測定
 
 ```bash
@@ -116,6 +149,8 @@ bash scripts/build_native_sdpa_avx512_exact_q8.sh
 - `scripts/native_*_patch.py`: strict PyTorch integration
 - `scripts/build_all.sh`: strict構成の全library build
 - `scripts/run_s20_strict.sh`: parameter固定のs20検証entry point
+- `scripts/run_cpu_end_to_end_strict.sh`: raw画像からGaussian/viewerまでのpipeline
+- `scripts/run_nf8_strict.sh`, `scripts/run_rnf8_strict.sh`: packed非線形量子化評価
 - `scripts/run_triposplat_quantized_param_batch.py`: 実験・trace runner
 - `docs/`: model構造、数式、parameter、milestone、検証報告
 
