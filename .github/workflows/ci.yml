@@ -1,0 +1,17 @@
+name: source-checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install audit tool
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - name: Verify source and shell syntax
+        run: bash scripts/verify_source.sh
+      - name: Compile AVX-512 libraries
+        run: bash scripts/build_all.sh
