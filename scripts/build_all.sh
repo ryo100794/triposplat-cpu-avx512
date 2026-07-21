@@ -8,6 +8,7 @@ bash scripts/build_gemm_f32_avx512.sh
 bash scripts/build_gemm_nf8_avx512.sh
 bash scripts/build_gemm_rnf8_avx512.sh
 bash scripts/build_gemm_nfr8_avx512.sh
+bash scripts/build_gemm_nf24_i16_avx512.sh
 bash scripts/build_native_gelu_avx512.sh
 bash scripts/build_native_activations_avx512.sh
 bash scripts/build_native_norm_rope_avx512.sh
@@ -16,5 +17,6 @@ bash scripts/build_native_repo_avx512.sh
 bash scripts/build_native_embeddings_avx512.sh
 bash scripts/build_native_sampler_avx512.sh
 bash scripts/build_native_sdpa_avx512_exact_q8.sh
+bash scripts/build_native_sdpa_avx512_exact_q8t512.sh
 
 printf 'Built strict AVX-512 backends in %s\n' "${ROOT}/artifacts/backends"

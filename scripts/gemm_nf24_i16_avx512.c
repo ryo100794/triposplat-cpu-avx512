@@ -1,0 +1,190 @@
+#include <immintrin.h>
+#include <stdint.h>
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
+static inline __m512i load16_i16(const uint8_t* codes) {
+  const __m256i packed = _mm256_loadu_si256((const __m256i*)codes);
+  return _mm512_cvtepi16_epi32(packed);
+}
+
+static inline __m512i load16_i8(const uint8_t* codes) {
+  const __m128i packed = _mm_loadu_si128((const __m128i*)codes);
+  return _mm512_cvtepi8_epi32(packed);
+}
+
+static inline __m512 decode16(
+    const uint8_t* code01,
+    const uint8_t* code2,
+    __m512 scale) {
+  const __m512i q01 = _mm512_slli_epi32(load16_i16(code01), 8);
+  const __m512i q = _mm512_add_epi32(q01, load16_i8(code2));
+  return _mm512_mul_ps(_mm512_cvtepi32_ps(q), scale);
+}
+
+static inline void kernel_16x16(
+    const float* x,
+    const uint8_t* codes0_t,
+    const uint8_t* codes1_t,
+    const uint8_t* codes2_t,
+    const float* scales0,
+    const float* scales1,
+    const float* scales2,
+    const float* codebook,
+    const float* bias,
+    float* out,
+    int K,
+    int N,
+    int stride_x,
+    int stride_out,
+    int source_n,
+    int output_n,
+    int stages) {
+  const __m512 scale0 = _mm512_loadu_ps(scales0 + source_n);
+  __m512 c0 = _mm512_loadu_ps(bias + source_n);
+  __m512 c1 = c0, c2 = c0, c3 = c0, c4 = c0, c5 = c0, c6 = c0, c7 = c0;
+  __m512 c8 = c0, c9 = c0, c10 = c0, c11 = c0, c12 = c0, c13 = c0, c14 = c0, c15 = c0;
+  for (int k = 0; k < K; ++k) {
+    const int64_t offset = (int64_t)k * N + source_n;
+    const __m512 w = decode16(codes0_t + (int64_t)offset * 2, codes1_t + offset, scale0);
+    c0 = _mm512_fmadd_ps(_mm512_set1_ps(x[(int64_t)0 * stride_x + k]), w, c0);
+    c1 = _mm512_fmadd_ps(_mm512_set1_ps(x[(int64_t)1 * stride_x + k]), w, c1);
+    c2 = _mm512_fmadd_ps(_mm512_set1_ps(x[(int64_t)2 * stride_x + k]), w, c2);
+    c3 = _mm512_fmadd_ps(_mm512_set1_ps(x[(int64_t)3 * stride_x + k]), w, c3);
+    c4 = _mm512_fmadd_ps(_mm512_set1_ps(x[(int64_t)4 * stride_x + k]), w, c4);
+    c5 = _mm512_fmadd_ps(_mm512_set1_ps(x[(int64_t)5 * stride_x + k]), w, c5);
+    c6 = _mm512_fmadd_ps(_mm512_set1_ps(x[(int64_t)6 * stride_x + k]), w, c6);
+    c7 = _mm512_fmadd_ps(_mm512_set1_ps(x[(int64_t)7 * stride_x + k]), w, c7);
+    c8 = _mm512_fmadd_ps(_mm512_set1_ps(x[(int64_t)8 * stride_x + k]), w, c8);
+    c9 = _mm512_fmadd_ps(_mm512_set1_ps(x[(int64_t)9 * stride_x + k]), w, c9);
+    c10 = _mm512_fmadd_ps(_mm512_set1_ps(x[(int64_t)10 * stride_x + k]), w, c10);
+    c11 = _mm512_fmadd_ps(_mm512_set1_ps(x[(int64_t)11 * stride_x + k]), w, c11);
+    c12 = _mm512_fmadd_ps(_mm512_set1_ps(x[(int64_t)12 * stride_x + k]), w, c12);
+    c13 = _mm512_fmadd_ps(_mm512_set1_ps(x[(int64_t)13 * stride_x + k]), w, c13);
+    c14 = _mm512_fmadd_ps(_mm512_set1_ps(x[(int64_t)14 * stride_x + k]), w, c14);
+    c15 = _mm512_fmadd_ps(_mm512_set1_ps(x[(int64_t)15 * stride_x + k]), w, c15);
+  }
+  _mm512_storeu_ps(out + (int64_t)0 * stride_out + output_n, c0);
+  _mm512_storeu_ps(out + (int64_t)1 * stride_out + output_n, c1);
+  _mm512_storeu_ps(out + (int64_t)2 * stride_out + output_n, c2);
+  _mm512_storeu_ps(out + (int64_t)3 * stride_out + output_n, c3);
+  _mm512_storeu_ps(out + (int64_t)4 * stride_out + output_n, c4);
+  _mm512_storeu_ps(out + (int64_t)5 * stride_out + output_n, c5);
+  _mm512_storeu_ps(out + (int64_t)6 * stride_out + output_n, c6);
+  _mm512_storeu_ps(out + (int64_t)7 * stride_out + output_n, c7);
+  _mm512_storeu_ps(out + (int64_t)8 * stride_out + output_n, c8);
+  _mm512_storeu_ps(out + (int64_t)9 * stride_out + output_n, c9);
+  _mm512_storeu_ps(out + (int64_t)10 * stride_out + output_n, c10);
+  _mm512_storeu_ps(out + (int64_t)11 * stride_out + output_n, c11);
+  _mm512_storeu_ps(out + (int64_t)12 * stride_out + output_n, c12);
+  _mm512_storeu_ps(out + (int64_t)13 * stride_out + output_n, c13);
+  _mm512_storeu_ps(out + (int64_t)14 * stride_out + output_n, c14);
+  _mm512_storeu_ps(out + (int64_t)15 * stride_out + output_n, c15);
+}
+
+static inline void kernel_1x16(
+    const float* x,
+    const uint8_t* codes0_t,
+    const uint8_t* codes1_t,
+    const uint8_t* codes2_t,
+    const float* scales0,
+    const float* scales1,
+    const float* scales2,
+    const float* codebook,
+    const float* bias,
+    float* out,
+    int K,
+    int N,
+    int source_n,
+    int output_n,
+    int stages) {
+  const __m512 scale0 = _mm512_loadu_ps(scales0 + source_n);
+  __m512 c = _mm512_loadu_ps(bias + source_n);
+  for (int k = 0; k < K; ++k) {
+    const int64_t offset = (int64_t)k * N + source_n;
+    const __m512 w = decode16(codes0_t + (int64_t)offset * 2, codes1_t + offset, scale0);
+    c = _mm512_fmadd_ps(_mm512_set1_ps(x[k]), w, c);
+  }
+  _mm512_storeu_ps(out + output_n, c);
+}
+
+int triposplat_gemm_rnf8_avx512_range(
+    const float* x,
+    const uint8_t* codes0_t,
+    const uint8_t* codes1_t,
+    const uint8_t* codes2_t,
+    const float* scales0,
+    const float* scales1,
+    const float* scales2,
+    const float* codebook,
+    const float* bias,
+    float* out,
+    int M,
+    int K,
+    int N,
+    int output_start,
+    int output_count,
+    int stride_x,
+    int stride_out,
+    int threads,
+    int stages) {
+  if (x == 0 || codes0_t == 0 || codes1_t == 0 || codes2_t == 0 || scales0 == 0 ||
+      scales1 == 0 || scales2 == 0 || codebook == 0 || bias == 0 || out == 0) return -1;
+  if (M <= 0 || K <= 0 || N <= 0 || output_start < 0 || output_count <= 0 || stages != 3) return -2;
+  if (output_start + output_count > N || stride_x < K || stride_out < output_count) return -3;
+  if ((output_start & 15) != 0 || (output_count & 15) != 0) return -4;
+#ifdef _OPENMP
+  if (threads > 0) omp_set_num_threads(threads);
+#endif
+  const int m16 = (M / 16) * 16;
+#pragma omp parallel for schedule(static)
+  for (int i = 0; i < m16; i += 16) {
+    for (int local_n = 0; local_n < output_count; local_n += 16) {
+      kernel_16x16(x + (int64_t)i * stride_x, codes0_t, codes1_t, codes2_t,
+                  scales0, scales1, scales2, codebook, bias, out + (int64_t)i * stride_out,
+                  K, N, stride_x, stride_out, output_start + local_n, local_n, stages);
+    }
+  }
+#pragma omp parallel for schedule(static)
+  for (int i = m16; i < M; ++i) {
+    for (int local_n = 0; local_n < output_count; local_n += 16) {
+      kernel_1x16(x + (int64_t)i * stride_x, codes0_t, codes1_t, codes2_t,
+                  scales0, scales1, scales2, codebook, bias, out + (int64_t)i * stride_out,
+                  K, N, output_start + local_n, local_n, stages);
+    }
+  }
+  return 0;
+}
+
+int triposplat_gemm_rnf8_avx512(
+    const float* x,
+    const uint8_t* codes0_t,
+    const uint8_t* codes1_t,
+    const uint8_t* codes2_t,
+    const float* scales0,
+    const float* scales1,
+    const float* scales2,
+    const float* codebook,
+    const float* bias,
+    float* out,
+    int M,
+    int K,
+    int N,
+    int stride_x,
+    int stride_out,
+    int threads,
+    int stages) {
+  return triposplat_gemm_rnf8_avx512_range(
+      x, codes0_t, codes1_t, codes2_t, scales0, scales1, scales2, codebook, bias, out,
+      M, K, N, 0, N, stride_x, stride_out, threads, stages);
+}
+
+int triposplat_gemm_rnf8_avx512_row_tile(void) {
+  return 16;
+}
+
+int triposplat_gemm_rnf8_avx512_residual_mode(void) {
+  return 4;
+}

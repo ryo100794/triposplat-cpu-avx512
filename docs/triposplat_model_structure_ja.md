@@ -579,13 +579,19 @@ rot_0, rot_1, rot_2, rot_3
 - raw画像から262,144 Gaussian、PLY/SPLAT、renderer、viewerまでのCPU end-to-end
 - 全206 LinearのNF8、residual NF8、NFR8x3 packed AVX-512 backend
 
-strict float32 AVX-512 s20は3322.886秒、combined RMSE 2.06857e-5である。NFR8x3
-s20は4640.813秒、combined RMSE 2.31568e-5、packed/original weight 75.2599%で、
-6視点renderはstrict float32比平均76.24 dBだった。
+strict float32 AVX-512 s20は3322.886秒、combined RMSE 2.06857e-5である。旧NFR8x3
+s20は4640.813秒だった。現在の採用構成NF24 int16 + SDPA key tile 512は
+3471.330秒、combined RMSE 9.37666e-5、camera RMSE 8.93055e-6で、全206 Linearを
+24-bit packed weightからfallbackなしで実行する。
 
-NFR8x3はruntimeで公式float32 weightをpackし、その後float32 Linear weightを保持
-しない。事前pack済みcheckpointを直接loadする実装ではないため、起動時peak削減は
-今後の課題である。
+NF24 int16はNF8由来の不等間隔code `q0` とresidual code `q1` を
+`q01 = 4*q0 + q1` としてint16へまとめ、`q2` をint8で保持する。kernelは
+`(scale/1024) * (256*q01 + q2)` をSIMD register内で復号する。これはモデルの式や
+学習済み機能を変えず、weight表現とGEMM実装だけを置換する。
+
+事前pack済みcheckpointのconverterと直接loaderも実装済みである。直接loaderは
+公式Flow checkpointをruntimeでloadせず、meta Linearへpacked bufferをattachする。
+runtime-pack版とlatent/cameraがbit完全一致し、process-tree peak RSSを25.8%削減した。
 
 ## まとめ
 
@@ -593,6 +599,7 @@ TripoSplatの本体は、画像特徴を条件にしたflow matching transformer
 
 低リソース版を同等にするには、モデルを簡略化するのではなく、同じモデルを段階実行・
 streaming export・同等sampler・中間比較可能な形へ分解する必要がある。現在は
-sampler、主要Flow演算、decoder/exportを含むCPU end-to-endとNFR8x3 s20まで検証済み
-である。次の本丸は、量子化品質を維持したまま3600秒未満へ短縮し、事前pack済み
-weightの直接loadで起動時memoryも減らすことである。
+sampler、主要Flow演算、decoder/exportを含むCPU end-to-end、NF24 int16 s20、
+事前pack済みweightの直接loadまで検証済みである。3600秒未満と起動時memory削減は
+達成した。次の性能目標は1800秒未満だが、これは今回の同等低リソース実装の完了条件
+より先の最適化である。

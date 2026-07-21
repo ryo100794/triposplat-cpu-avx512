@@ -6,9 +6,9 @@ flow model.
 
 > **This repository does not redistribute TripoSplat checkpoints.** The
 > validated `q8` baseline name means an eight-query execution block
-> (`QUERY_BLOCK=8`), not 8-bit weights or activations. The reported strict s20
-> baseline remains float32. Separate NF8 and residual-NF8 runners implement
-> packed nonlinear weight execution and are reported as experimental below.
+> (`QUERY_BLOCK=8`), not 8-bit weights or activations. The exact strict s20 baseline remains float32. The selected low-resource NF24
+> int16 configuration and its historical NF8/residual-NF8 evaluations are
+> reported separately below.
 
 Japanese documentation: [README_ja.md](README_ja.md)
 
@@ -37,15 +37,17 @@ The detailed evidence and stage timing are in
 
 - Float32 AVX-512 GEMM for all active Flow-model Linear layers.
 - Exact dense, key-bias, and final cross SDPA with online softmax.
-- Eight-query SDPA blocking that shares K/V loads across query rows.
+- Eight-query SDPA blocking with a validated 512-key tile that shares K/V loads across query rows.
 - GELU(tanh), SiLU, LayerNorm, multi-head RMSNorm, and RoPE kernels.
 - Block modulation, residual, RePo, position/timestep embedding kernels.
 - Native CFG and Euler sampler updates.
 - CPU background removal, DINO/Flux-VAE condition encoding, deterministic
   noise generation, Gaussian decoding, low-memory export, reference rendering,
   and a standalone WebGL viewer.
-- Packed nonlinear NF8 and two/three-stage residual-NF8 AVX-512 GEMM for all
+- Packed nonlinear NF8/residual-NF8 evaluation and the selected 24-bit NF24 int16 AVX-512 GEMM for all
   206 Flow-model Linear modules, without retaining float32 Linear weights.
+- A resumable NF24 checkpoint converter and direct loader that avoids loading the
+  official Flow checkpoint at startup.
 - Strict wrappers that raise on unsupported execution instead of silently
   falling back to PyTorch.
 - Reproducible latent/camera comparison against a float32 baseline.
@@ -63,36 +65,37 @@ inference, Gaussian decoding, PLY/SPLAT export, reference rendering, and a
 standalone WebGL viewer. One 1024-pixel validation run completed with 262,144
 Gaussians and preserved the same Flow quality metrics as the strict baseline.
 
-Packed nonlinear quantization has also completed an s20 validation. The
-selected NFR8x3 layout uses one nonlinear NF8 stage followed by two signed
-int8 residual stages. It stores 24 bits per weight, retains no float32 Linear
-weights, and executes all 206 active Linear modules directly with AVX-512.
+Packed nonlinear quantization now passes the one-hour s20 gate. The selected
+NF24 int16 layout uses an irregular NF8-derived first stage and two shared-scale
+signed-int8 residual stages. The first two codes are combined as
+`q01 = 4*q0 + q1`; AVX-512 decodes `(scale/1024) * (256*q01 + q2)` before
+FMA. It stores 24 bits per weight, retains no float32 Linear weights, and covers
+all 206 active Linear modules with zero fallback.
 
 | Linear weights | Packed/original bytes | Validation | Result |
 |---|---:|---:|---|
 | NF8, one stage (8 bits) | 25.15% | s1 combined RMSE 2.51245e-2 | rejected on quality |
 | Residual NF8, two stages (16 bits) | 50.20% | s1 combined RMSE 4.50681e-4 | rejected on quality |
-| Residual NF8, three NF8 stages (24 bits) | 75.26% | s4 combined RMSE 1.16460e-4 | passed s4 |
-| NFR8x3: NF8 + two signed-int8 residuals (24 bits) | 75.26% | s20 combined RMSE 2.31568e-5 | passed s20 |
+| NFR8x3, three streams (24 bits) | 75.26% | s20 combined RMSE 2.31568e-5 | quality pass, superseded on speed |
+| NF24 int16, combined first two stages (24 bits) | 75.11% | s20 combined RMSE 9.37666e-5 | selected; 3471.330 s |
 
-The selected NFR8x3 s20 run took 4640.813 s, including 2365.633 s in native
-packed Linear calls, and reported zero Linear fallbacks and no NaN/Inf. Its
-latent RMSE was 3.25672e-5 and camera RMSE was 3.44202e-6 against the original
-CPU float32 reference. Six rendered views compared with the strict native
-float32 Gaussian output at 76.24 dB mean PSNR (69.33 dB worst view). The
-packed weights use 1,114,596,688 bytes instead of 1,480,996,180 bytes.
+The selected NF24 int16 + SDPA key-tile-512 s20 run took 3471.330 s, versus
+4640.813 s for the previous NFR8x3 run and 10856.388 s for the original CPU
+float32 baseline. Native packed Linear time was 1519.392 s, SDPA time was
+1645.894 s, camera RMSE was 8.93055e-6, and NaN/Inf/fallback counts were zero.
+This meets the under-3600-second gate without changing TripoSplat semantics.
 
-Packing currently happens after loading the official float32 checkpoint. The
-runtime releases float32 Linear weights, but startup peak memory and the source
-checkpoint size are not reduced until a direct packed-weight loader is added.
+A resumable prepacked checkpoint format is also implemented. It stores
+1,113,368,944 bytes across 206 Linear shards plus non-Linear state. Direct load
+did not call the source-checkpoint loader and produced bit-identical latent and
+camera arrays. Process-tree peak RSS fell from 3,437,973,504 to 2,551,123,968
+bytes (25.8%). Checksum verification made this direct-load s1 run slower than
+runtime packing, so the direct loader is currently a disk/memory improvement,
+not a speed claim. Derived packed weights are not distributed by this repo.
 
-This establishes a quality-valid packed s20 implementation and beats the
-original 10856.388 s CPU baseline by 2.34x. It does not beat the exact native
-float32 AVX-512 run: 4640.813 s is 39.7% slower than 3322.886 s. The remaining
-performance target is to reduce residual-stage decode/GEMM overhead below the
-one-hour tier without changing TripoSplat semantics.
-
-Detailed NFR8x3 evidence is in
+Current evidence is in
+[`docs/triposplat_nf24_i16_q8t512_s20_validation_20260721_ja.md`](docs/triposplat_nf24_i16_q8t512_s20_validation_20260721_ja.md).
+The superseded NFR8x3 result remains documented in
 [`docs/triposplat_nfr8x3_s20_validation_20260721_ja.md`](docs/triposplat_nfr8x3_s20_validation_20260721_ja.md).
 
 ## Requirements
@@ -158,22 +161,44 @@ environment can leave little room on quota-limited filesystems.
 
 ## Packed nonlinear quantization
 
-```bash
-# One-stage NF8 or two/three-stage residual NF8 evaluation.
-STEPS=1 bash scripts/run_nf8_strict.sh
-STEPS=1 RNF8_STAGES=3 bash scripts/run_rnf8_strict.sh
+`NF24 int16` is the selected low-resource layout:
 
-# Validated hybrid NFR8x3 s20 layout.
+```bash
 STEPS=20 RNF8_STAGES=3 \
-RNF8_RESIDUAL_MODE=symmetric_int8 \
-RNF8_LIBRARY=artifacts/backends/libtriposplat_gemm_nfr8_avx512.so \
+RNF8_RESIDUAL_MODE=nf24_i16 \
+RNF8_LIBRARY=artifacts/backends/libtriposplat_gemm_nf24_i16_avx512.so \
+SDPA_LIBRARY=artifacts/backends/libtriposplat_sdpa_avx512_exact_q8t512.so \
+SDPA_SYMBOL=triposplat_sdpa_f32_avx512_exact_q8t512 \
 bash scripts/run_rnf8_strict.sh
 ```
 
-These runners require matching deterministic float32 reference NPZ files.
-Advance to longer sampler runs only after checking the generated comparison
-JSON; the one-stage and two-stage results above are intentionally documented as
-failed quality experiments.
+Convert an official Flow checkpoint once, then load packed weights directly:
+
+```bash
+.venv/bin/python scripts/pack_triposplat_nf24_i16_checkpoint.py \
+  --checkpoint /path/to/triposplat_fp16.safetensors \
+  --output-dir /path/to/triposplat_nf24_i16_v1
+
+TRIPOSPLAT_RNF8_PREPACKED_DIR=/path/to/triposplat_nf24_i16_v1 \
+TRIPOSPLAT_RNF8_PREPACKED_VERIFY=1 \
+STEPS=1 RNF8_STAGES=3 RNF8_RESIDUAL_MODE=nf24_i16 \
+RNF8_LIBRARY=artifacts/backends/libtriposplat_gemm_nf24_i16_avx512.so \
+SDPA_LIBRARY=artifacts/backends/libtriposplat_sdpa_avx512_exact_q8t512.so \
+SDPA_SYMBOL=triposplat_sdpa_f32_avx512_exact_q8t512 \
+bash scripts/run_rnf8_strict.sh
+```
+
+The converter is resumable and records source/shard SHA256 values. Matching
+float32 reference NPZ files remain required for quality gating.
+
+For the complete raw-image-to-viewer workflow, use:
+
+```bash
+INPUT=/path/to/source.png \
+REFERENCE_NPZ=/path/to/float32_s20/base_latent.npz \
+TRIPOSPLAT_RNF8_PREPACKED_DIR=/path/to/triposplat_nf24_i16_v1 \
+bash scripts/run_cpu_low_resource_nf24.sh
+```
 
 ## SDPA microbenchmark
 
@@ -195,6 +220,8 @@ set.
 - `scripts/build_all.sh`: builds all libraries used by the strict run.
 - `scripts/run_s20_strict.sh`: parameter-locked validation entry point.
 - `scripts/run_cpu_end_to_end_strict.sh`: raw-image to Gaussian/viewer pipeline.
+- `scripts/run_cpu_low_resource_nf24.sh`: selected NF24 s20 end-to-end entry point.
+- `scripts/pack_triposplat_nf24_i16_checkpoint.py`: resumable packed-checkpoint converter.
 - `scripts/run_nf8_strict.sh`, `scripts/run_rnf8_strict.sh`: packed nonlinear
   quantization evaluation entry points.
 - `scripts/run_triposplat_quantized_param_batch.py`: research and trace runner.

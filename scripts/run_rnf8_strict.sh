@@ -7,6 +7,8 @@ TRIPOSPLAT_REPO="${TRIPOSPLAT_REPO:-${PROJECT_ROOT}/vendor/TripoSplat}"
 TRIPOSPLAT_CKPTS="${TRIPOSPLAT_CKPTS:-${PROJECT_ROOT}/models/TripoSplat/ckpts}"
 MODEL_THREADS="${MODEL_THREADS:-8}"
 SDPA_THREADS="${SDPA_THREADS:-4}"
+SDPA_LIBRARY="${SDPA_LIBRARY:-${PROJECT_ROOT}/artifacts/backends/libtriposplat_sdpa_avx512_exact_q8.so}"
+SDPA_SYMBOL="${SDPA_SYMBOL:-triposplat_sdpa_f32_avx512_exact_q8}"
 RNF8_LIBRARY="${RNF8_LIBRARY:-${PROJECT_ROOT}/artifacts/backends/libtriposplat_gemm_rnf8_avx512.so}"
 STEPS="${STEPS:-1}"
 RNF8_STAGES="${RNF8_STAGES:-2}"
@@ -25,6 +27,8 @@ for path in "${VENV_PY}" "${TRIPOSPLAT_REPO}/triposplat.py" "${INPUT}" "${CONDIT
 done
 [[ -f "${RNF8_LIBRARY}" ]] || { printf 'Native RNF8 library is missing: %s\n' "${RNF8_LIBRARY}" >&2; exit 2; }
 
+[[ -f "${SDPA_LIBRARY}" ]] || { echo "Native SDPA library is missing: ${SDPA_LIBRARY}" >&2; exit 2; }
+
 required_libraries=(
   libtriposplat_gelu_avx512.so
   libtriposplat_activations_avx512.so
@@ -33,7 +37,6 @@ required_libraries=(
   libtriposplat_repo_avx512.so
   libtriposplat_embeddings_avx512.so
   libtriposplat_sampler_avx512.so
-  libtriposplat_sdpa_avx512_exact_q8.so
 )
 for library in "${required_libraries[@]}"; do
   [[ -f "${PROJECT_ROOT}/artifacts/backends/${library}" ]] || {
@@ -59,8 +62,8 @@ env \
   TRIPOSPLAT_RNF8_STAGES="${RNF8_STAGES}" \
   TRIPOSPLAT_RNF8_RESIDUAL_MODE="${RNF8_RESIDUAL_MODE}" \
   TRIPOSPLAT_NATIVE_SDPA_THREADS="${SDPA_THREADS}" \
-  TRIPOSPLAT_NATIVE_SDPA_LIBRARY=artifacts/backends/libtriposplat_sdpa_avx512_exact_q8.so \
-  TRIPOSPLAT_NATIVE_SDPA_SYMBOL=triposplat_sdpa_f32_avx512_exact_q8 \
+  TRIPOSPLAT_NATIVE_SDPA_LIBRARY="${SDPA_LIBRARY}" \
+  TRIPOSPLAT_NATIVE_SDPA_SYMBOL="${SDPA_SYMBOL}" \
   "${VENV_PY}" scripts/run_triposplat_rnf8_param_batch.py \
     --output-dir "${OUTPUT_DIR}" \
     --input "${INPUT}" \

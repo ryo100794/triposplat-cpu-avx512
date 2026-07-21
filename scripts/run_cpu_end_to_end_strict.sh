@@ -11,6 +11,8 @@ RUN_ID="${RUN_ID:-cpu_end_to_end_avx512_q8_s20_g3_1024}"
 RUN_DIR="${RUN_DIR:-${PROJECT_ROOT}/artifacts/end_to_end/${RUN_ID}}"
 MODEL_THREADS="${MODEL_THREADS:-8}"
 SDPA_THREADS="${SDPA_THREADS:-4}"
+FLOW_RUNNER="${FLOW_RUNNER:-scripts/run_s20_strict.sh}"
+VIEWER_TITLE="${VIEWER_TITLE:-TripoSplat CPU AVX-512 strict s20}"
 NUM_GAUSSIANS="${NUM_GAUSSIANS:-262144}"
 RESUME="${RESUME:-0}"
 CAPACITY_CHECK_BYTES="${CAPACITY_CHECK_BYTES:-268435456}"
@@ -70,7 +72,7 @@ if [[ "${RESUME}" != "1" || ! -s "${FLOW_DIR}/base_latent.npz" ]]; then
   PROJECT_ROOT="${PROJECT_ROOT}" \
   TRIPOSPLAT_REPO="${TRIPOSPLAT_REPO}" \
   TRIPOSPLAT_CKPTS="${TRIPOSPLAT_CKPTS}" \
-    bash scripts/run_s20_strict.sh
+    bash "${FLOW_RUNNER}"
 fi
 
 run_if_missing "${GAUSSIAN_DIR}/output.ply" \
@@ -95,7 +97,7 @@ run_if_missing "${GAUSSIAN_DIR}/viewer.html" \
   "${VENV_PY}" scripts/make_triposplat_ply_viewer_html_webgl.py \
     --ply "${GAUSSIAN_DIR}/output.ply" \
     --output "${GAUSSIAN_DIR}/viewer.html" \
-    --title "TripoSplat CPU AVX-512 strict s20" \
+    --title "${VIEWER_TITLE}" \
     --default-view front_x --fov-deg 45 --distance-scale 2.4 \
     --thumbnail-image "${RENDER_DIR}/official_spark_default.png"
 

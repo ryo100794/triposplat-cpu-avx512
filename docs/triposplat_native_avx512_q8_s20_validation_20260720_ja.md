@@ -227,3 +227,16 @@ NFR8x3 s20の実測は次のとおり。
 詳細は `triposplat_nfr8x3_s20_validation_20260721_ja.md` を参照する。残る速度目標は
 NFR8x3を3600秒未満、次に1800秒未満へ短縮すること、起動時float32 checkpointを
 不要にする事前pack済みweight loaderを実装することである。
+
+
+## 13. 2026-07-21 NF24 int16 follow-up
+
+前節末尾の残件はNF24 int16 + SDPA key tile 512で完了した。s20は3471.330秒、
+combined RMSE 9.37666e-5、camera RMSE 8.93055e-6、全206 Linear fallback 0である。
+これによりNFR8x3の4640.813秒から25.2%短縮し、3600秒未満を達成した。
+
+事前pack済み206 Linearを直接loadする経路も追加した。公式Flow checkpoint loaderを
+呼ばず、runtime-pack版のlatent/cameraとbit完全一致し、process-tree peak RSSを
+25.8%削減した。raw画像からviewerまでの単一入口は
+`scripts/run_cpu_low_resource_nf24.sh` である。詳細は
+`triposplat_nf24_i16_q8t512_s20_validation_20260721_ja.md` を参照する。
