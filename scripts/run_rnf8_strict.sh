@@ -7,8 +7,10 @@ TRIPOSPLAT_REPO="${TRIPOSPLAT_REPO:-${PROJECT_ROOT}/vendor/TripoSplat}"
 TRIPOSPLAT_CKPTS="${TRIPOSPLAT_CKPTS:-${PROJECT_ROOT}/models/TripoSplat/ckpts}"
 MODEL_THREADS="${MODEL_THREADS:-8}"
 SDPA_THREADS="${SDPA_THREADS:-4}"
+RNF8_LIBRARY="${RNF8_LIBRARY:-${PROJECT_ROOT}/artifacts/backends/libtriposplat_gemm_rnf8_avx512.so}"
 STEPS="${STEPS:-1}"
 RNF8_STAGES="${RNF8_STAGES:-2}"
+RNF8_RESIDUAL_MODE="${RNF8_RESIDUAL_MODE:-nf8}"
 RUN_ID="${RUN_ID:-cpu_avx512_rnf8x${RNF8_STAGES}_strict_s${STEPS}_g3_1024}"
 INPUT="${INPUT:-${PROJECT_ROOT}/inputs/prepared_rgb.webp}"
 CONDITION_NPZ="${CONDITION_NPZ:-${PROJECT_ROOT}/inputs/condition_1024.npz}"
@@ -21,9 +23,9 @@ CAPACITY_CHECK_BYTES="${CAPACITY_CHECK_BYTES:-67108864}"
 for path in "${VENV_PY}" "${TRIPOSPLAT_REPO}/triposplat.py" "${INPUT}" "${CONDITION_NPZ}" "${NOISE_NPZ}" "${REFERENCE_NPZ}"; do
   [[ -e "${path}" ]] || { printf 'Required path is missing: %s\n' "${path}" >&2; exit 2; }
 done
+[[ -f "${RNF8_LIBRARY}" ]] || { printf 'Native RNF8 library is missing: %s\n' "${RNF8_LIBRARY}" >&2; exit 2; }
 
 required_libraries=(
-  libtriposplat_gemm_rnf8_avx512.so
   libtriposplat_gelu_avx512.so
   libtriposplat_activations_avx512.so
   libtriposplat_norm_rope_avx512.so
@@ -55,6 +57,7 @@ env \
   TORCH_NUM_INTEROP_THREADS=1 \
   ATEN_CPU_CAPABILITY=avx2 \
   TRIPOSPLAT_RNF8_STAGES="${RNF8_STAGES}" \
+  TRIPOSPLAT_RNF8_RESIDUAL_MODE="${RNF8_RESIDUAL_MODE}" \
   TRIPOSPLAT_NATIVE_SDPA_THREADS="${SDPA_THREADS}" \
   TRIPOSPLAT_NATIVE_SDPA_LIBRARY=artifacts/backends/libtriposplat_sdpa_avx512_exact_q8.so \
   TRIPOSPLAT_NATIVE_SDPA_SYMBOL=triposplat_sdpa_f32_avx512_exact_q8 \
@@ -82,7 +85,7 @@ env \
     --selective-final-block \
     --native-avx512-linear \
     --native-avx512-linear-include-regex '.*' \
-    --native-avx512-linear-library artifacts/backends/libtriposplat_gemm_rnf8_avx512.so \
+    --native-avx512-linear-library "${RNF8_LIBRARY}" \
     --native-avx512-linear-threads "${MODEL_THREADS}" \
     --native-avx512-linear-strict \
     --native-avx512-gelu \

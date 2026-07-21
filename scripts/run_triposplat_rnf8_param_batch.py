@@ -11,7 +11,10 @@ from native_linear_rnf8_avx512_patch import apply_triposplat_native_rnf8_avx512_
 
 def redirect_native_linear(flow_model, **kwargs):
     return apply_triposplat_native_rnf8_avx512_patch(
-        flow_model, stages=int(os.environ.get("TRIPOSPLAT_RNF8_STAGES", "2")), **kwargs
+        flow_model,
+        stages=int(os.environ.get("TRIPOSPLAT_RNF8_STAGES", "2")),
+        residual_mode=os.environ.get("TRIPOSPLAT_RNF8_RESIDUAL_MODE", "nf8"),
+        **kwargs,
     )
 
 

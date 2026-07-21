@@ -146,14 +146,19 @@ s4は公式float32同条件の `baseline_conditionnpz_exact_s4_g3_1024_20260719`
 
 runのmanifest、latent、比較JSONはprivateな入力依存成果物なのでrepositoryへ含めない。公開版には再現script、kernel source、品質・時間の集計文書を含める。最終s20結果は `triposplat_native_avx512_q8_s20_validation_20260720_ja.md` を参照する。
 
-## 9. 残る低リソース化課題
+## 9. 2026-07-21更新と残件
 
-今回達成したのは、元のfloat32 flow計算をnative AVX-512へ置き換えて同等品質を確認する段階である。低リソース版TripoSplat全体の最終ゴールに対しては次が残る。
+初版後、DINO encoderとGS decoderを含むCPU end-to-end、全206 LinearのNFR8x3、
+s20品質・速度、最終Gaussian/viewerまでを検証した。したがって初版の項目3、4、5は
+達成済みである。詳細は `triposplat_nfr8x3_s20_validation_20260721_ja.md` を参照する。
 
-1. exact SDPAのthread scalingとcache blockingを改善し、主ボトルネックを短縮する。
+現在残る課題:
+
+1. exact SDPAのthread scalingとcache blockingを改善する。
 2. data movementの `copy_/clone/contiguous/cat` を減らし、scratch bufferを再利用する。
-3. nonlinear quantization/packed GEMMを品質gate付きで全Linearへ段階適用する。
-4. DINO encoderとGS decoderを含むend-to-end CPU memory/timeを別途測る。
-5. s20を実測し、step累積誤差と実用時間を最終判定する。
+3. NFR8x3 s20を4640.813秒から3600秒未満へ短縮する。
+4. 事前pack済みweightを直接loadし、起動時もfloat32 Linear weightを不要にする。
+5. NFR8x3をraw画像からviewerまでの単一entry pointへ統合する。
 
-古い文書にある「TripoSplat全体の主要flow演算は完全SIMD化未完了」という記述は、その文書作成時点では正しい。今回のstrict構成に限れば、flow modelとsamplerの有効な大規模算術経路はnative化済みである。ただし、量子化を含む最終低リソース実装とend-to-endパイプラインは未完了である。
+strict float32構成の主要flow演算はnative化済みである。NFR8x3も全Linearをpacked
+AVX-512で実行するが、速度ではstrict float32 backendが依然として優位である。

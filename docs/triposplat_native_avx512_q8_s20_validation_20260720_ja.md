@@ -204,20 +204,26 @@ bash scripts/run_s20_strict.sh
 
 公開repositoryにはsource、build/run script、検証文書だけを含める。model、checkpoint、入力画像、condition/noise、latent、生成物、private storage情報は含めない。
 
-## 12. 次のゴール
+## 12. 2026-07-21更新
 
-今回達成:
+この節の初版で未達としていた次の項目は、その後の検証で達成した。
 
-- exact CPU attention backend
-- flow/sampler有効経路のstrict native fallback 0
-- CPU-only s20 3600秒未満
-- s20品質gate
+- CPU-only raw画像から背景除去、DINO/Flux-VAE condition、s20 Flow、GS decoder、
+  PLY/SPLAT、renderer、単一WebGL viewerまで完走
+- 全206 Linearを対象とするpacked非線形/residual量子化
+- NFR8x3でs20品質gate、Linear fallback 0
+- strict float32 Gaussianとの6視点比較
 
-未達:
+NFR8x3 s20の実測は次のとおり。
 
-- DINO encoderとGS decoderを含むend-to-end CPU計測
-- s20 1800秒未満
-- 品質gateを維持するモデル全体の非線形量子化とpacked GEMM
-- 最終Gaussian/viewerまでの一括生成
+| 項目 | 結果 |
+|---|---:|
+| wall time | 4640.813秒 |
+| combined RMSE | 2.31568e-5 |
+| camera RMSE | 3.44202e-6 |
+| packed/original Linear weight | 75.2599% |
+| 6視点mean / worst PSNR | 76.24 / 69.33 dB |
 
-次段階では、まずSDPAのK/V pack再利用、layout/copy削減、head/query並列のNUMA配置を評価する。非線形量子化は別の品質gate付きbranchとして扱い、今回のexact float32結果を比較基準にする。
+詳細は `triposplat_nfr8x3_s20_validation_20260721_ja.md` を参照する。残る速度目標は
+NFR8x3を3600秒未満、次に1800秒未満へ短縮すること、起動時float32 checkpointを
+不要にする事前pack済みweight loaderを実装することである。

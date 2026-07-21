@@ -18,14 +18,19 @@ def bind(lib, name: str, pointer_count: int, integer_count: int):
     return fn
 
 
-def run_case(lib, m: int, k: int, n: int, stages: int, threads: int):
+def run_case(lib, m: int, k: int, n: int, stages: int, threads: int, residual_mode: str):
     torch.manual_seed(19 + stages + n)
     x = torch.randn(m, k, dtype=torch.float32)
     weight = torch.randn(n, k, dtype=torch.float32) * 0.03
     bias = torch.randn(n, dtype=torch.float32) * 0.01
     codebook = make_nf8_codebook(torch)
-    codes, scales, error = quantize_rnf8_per_output_channel(weight, codebook, stages)
-    reconstructed = sum(codebook[codes[i].t().long()] * scales[i][:, None] for i in range(stages))
+    codes, scales, error = quantize_rnf8_per_output_channel(weight, codebook, stages, residual_mode)
+    reconstructed = codebook[codes[0].t().long()] * scales[0][:, None]
+    for stage in range(1, stages):
+        if residual_mode == "nf8":
+            reconstructed = reconstructed + codebook[codes[stage].t().long()] * scales[stage][:, None]
+        else:
+            reconstructed = reconstructed + codes[stage].t().to(torch.float32) * scales[stage][:, None]
     reference = torch.nn.functional.linear(x, reconstructed, bias)
     code2 = codes[2] if stages == 3 else codes[1]
     scale2 = scales[2] if stages == 3 else scales[1]
@@ -42,20 +47,21 @@ def run_case(lib, m: int, k: int, n: int, stages: int, threads: int):
     if status != 0:
         raise RuntimeError(f"{symbol} status={status}")
     torch.testing.assert_close(out, reference, rtol=2e-5, atol=2e-5)
-    return {"shape": [m, k, n], "stages": stages, "kernel_max_abs": float((out - reference).abs().max()), "packing": error}
+    return {"shape": [m, k, n], "stages": stages, "residual_mode": residual_mode, "kernel_max_abs": float((out - reference).abs().max()), "packing": error}
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--library", type=Path, default=Path("artifacts/backends/libtriposplat_gemm_rnf8_avx512.so"))
     parser.add_argument("--threads", type=int, default=2)
+    parser.add_argument("--residual-mode", choices=("nf8", "symmetric_int8"), default="nf8")
     args = parser.parse_args()
     lib = ctypes.CDLL(args.library.as_posix())
     results = [
-        run_case(lib, 17, 96, 64, 2, args.threads),
-        run_case(lib, 3, 96, 5, 2, args.threads),
-        run_case(lib, 17, 96, 64, 3, args.threads),
-        run_case(lib, 3, 96, 5, 3, args.threads),
+        run_case(lib, 25, 96, 64, 2, args.threads, args.residual_mode),
+        run_case(lib, 3, 96, 5, 2, args.threads, args.residual_mode),
+        run_case(lib, 25, 96, 64, 3, args.threads, args.residual_mode),
+        run_case(lib, 3, 96, 5, 3, args.threads, args.residual_mode),
     ]
     print({"status": "pass", "cases": results})
     return 0

@@ -63,19 +63,37 @@ inference, Gaussian decoding, PLY/SPLAT export, reference rendering, and a
 standalone WebGL viewer. One 1024-pixel validation run completed with 262,144
 Gaussians and preserved the same Flow quality metrics as the strict baseline.
 
-Packed nonlinear quantization is implemented, but it is not yet the validated
-replacement for the float32 s20 result:
+Packed nonlinear quantization has also completed an s20 validation. The
+selected NFR8x3 layout uses one nonlinear NF8 stage followed by two signed
+int8 residual stages. It stores 24 bits per weight, retains no float32 Linear
+weights, and executes all 206 active Linear modules directly with AVX-512.
 
-| Linear weights | Packed/original bytes | 1-step combined RMSE | Runtime status |
+| Linear weights | Packed/original bytes | Validation | Result |
 |---|---:|---:|---|
-| NF8, one stage (8 bits) | 25.15% | 2.51245e-2 | rejected on quality |
-| Residual NF8, two stages (16 bits) | 50.20% | 4.50681e-4 | rejected on quality |
-| Residual NF8, three stages (24 bits) | 75.26% | 8.12530e-6 | passed the 1-step gate; s20 pending |
+| NF8, one stage (8 bits) | 25.15% | s1 combined RMSE 2.51245e-2 | rejected on quality |
+| Residual NF8, two stages (16 bits) | 50.20% | s1 combined RMSE 4.50681e-4 | rejected on quality |
+| Residual NF8, three NF8 stages (24 bits) | 75.26% | s4 combined RMSE 1.16460e-4 | passed s4 |
+| NFR8x3: NF8 + two signed-int8 residuals (24 bits) | 75.26% | s20 combined RMSE 2.31568e-5 | passed s20 |
 
-All three paths execute packed codebook indices directly in AVX-512 GEMM and
-reported zero Linear fallbacks. The three-stage 1-step run took 507.736 s,
-including 332.770 s in native packed Linear calls, so memory reduction is
-demonstrated but practical s20 speed is not yet established.
+The selected NFR8x3 s20 run took 4640.813 s, including 2365.633 s in native
+packed Linear calls, and reported zero Linear fallbacks and no NaN/Inf. Its
+latent RMSE was 3.25672e-5 and camera RMSE was 3.44202e-6 against the original
+CPU float32 reference. Six rendered views compared with the strict native
+float32 Gaussian output at 76.24 dB mean PSNR (69.33 dB worst view). The
+packed weights use 1,114,596,688 bytes instead of 1,480,996,180 bytes.
+
+Packing currently happens after loading the official float32 checkpoint. The
+runtime releases float32 Linear weights, but startup peak memory and the source
+checkpoint size are not reduced until a direct packed-weight loader is added.
+
+This establishes a quality-valid packed s20 implementation and beats the
+original 10856.388 s CPU baseline by 2.34x. It does not beat the exact native
+float32 AVX-512 run: 4640.813 s is 39.7% slower than 3322.886 s. The remaining
+performance target is to reduce residual-stage decode/GEMM overhead below the
+one-hour tier without changing TripoSplat semantics.
+
+Detailed NFR8x3 evidence is in
+[`docs/triposplat_nfr8x3_s20_validation_20260721_ja.md`](docs/triposplat_nfr8x3_s20_validation_20260721_ja.md).
 
 ## Requirements
 
@@ -144,6 +162,12 @@ environment can leave little room on quota-limited filesystems.
 # One-stage NF8 or two/three-stage residual NF8 evaluation.
 STEPS=1 bash scripts/run_nf8_strict.sh
 STEPS=1 RNF8_STAGES=3 bash scripts/run_rnf8_strict.sh
+
+# Validated hybrid NFR8x3 s20 layout.
+STEPS=20 RNF8_STAGES=3 \
+RNF8_RESIDUAL_MODE=symmetric_int8 \
+RNF8_LIBRARY=artifacts/backends/libtriposplat_gemm_nfr8_avx512.so \
+bash scripts/run_rnf8_strict.sh
 ```
 
 These runners require matching deterministic float32 reference NPZ files.

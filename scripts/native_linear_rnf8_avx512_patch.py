@@ -11,11 +11,13 @@ from typing import Any
 from native_linear_nf8_avx512_patch import make_nf8_codebook
 
 
-def quantize_rnf8_per_output_channel(weight, codebook, stages: int):
+def quantize_rnf8_per_output_channel(weight, codebook, stages: int, residual_mode: str = "nf8"):
     import torch
 
     if stages not in (2, 3):
         raise ValueError("residual NF8 stages must be 2 or 3")
+    if residual_mode not in ("nf8", "symmetric_int8"):
+        raise ValueError(f"unsupported residual quantizer: {residual_mode}")
     if weight.device.type != "cpu" or weight.dtype != torch.float32 or weight.ndim != 2:
         raise ValueError("residual NF8 packing requires a CPU float32 2D weight")
     source = weight.detach().contiguous()
@@ -24,15 +26,26 @@ def quantize_rnf8_per_output_channel(weight, codebook, stages: int):
     codes_t = []
     scales = []
     stage_errors = []
+    tiny = torch.finfo(torch.float32).tiny
     for stage in range(stages):
-        scale = residual.abs().amax(dim=1).clamp_min(torch.finfo(torch.float32).tiny).contiguous()
-        codes = torch.bucketize(residual / scale[:, None], midpoints).to(torch.uint8)
-        residual = residual - codebook[codes.long()] * scale[:, None]
+        max_abs = residual.abs().amax(dim=1).clamp_min(tiny)
+        if stage == 0 or residual_mode == "nf8":
+            scale = max_abs.contiguous()
+            codes = torch.bucketize(residual / scale[:, None], midpoints).to(torch.uint8)
+            approximation = codebook[codes.long()] * scale[:, None]
+            quantizer = "nf8"
+        else:
+            scale = (max_abs / 127.0).contiguous()
+            codes = torch.round(residual / scale[:, None]).clamp_(-127, 127).to(torch.int8)
+            approximation = codes.to(torch.float32) * scale[:, None]
+            quantizer = "symmetric_int8"
+        residual = residual - approximation
         codes_t.append(codes.t().contiguous())
         scales.append(scale)
         stage_errors.append(
             {
                 "stage": stage + 1,
+                "quantizer": quantizer,
                 "residual_rmse": float(torch.sqrt(torch.mean(residual * residual)).item()),
                 "residual_max_abs": float(residual.abs().max().item()),
             }
@@ -43,6 +56,7 @@ def quantize_rnf8_per_output_channel(weight, codebook, stages: int):
         "weight_max_abs": stage_errors[-1]["residual_max_abs"],
         "weight_rms": weight_rms,
         "weight_relative_rmse": stage_errors[-1]["residual_rmse"] / max(weight_rms, 1.0e-30),
+        "residual_mode": residual_mode,
         "stages": stage_errors,
     }
     return codes_t, scales, error
@@ -58,6 +72,7 @@ def apply_triposplat_native_rnf8_avx512_patch(
     threads: int = 2,
     strict: bool = True,
     stages: int = 2,
+    residual_mode: str = "nf8",
 ) -> dict[str, Any]:
     if not enabled:
         return {"enabled": False}
@@ -65,6 +80,8 @@ def apply_triposplat_native_rnf8_avx512_patch(
         raise ValueError("residual NF8 releases float32 weights and requires strict=True")
     if stages not in (2, 3):
         raise ValueError("residual NF8 stages must be 2 or 3")
+    if residual_mode not in ("nf8", "symmetric_int8"):
+        raise ValueError(f"unsupported residual quantizer: {residual_mode}")
 
     import torch
     import torch.nn as nn
@@ -75,6 +92,28 @@ def apply_triposplat_native_rnf8_avx512_patch(
     if not lib_path.is_file():
         raise FileNotFoundError(lib_path)
     lib = ctypes.CDLL(lib_path.as_posix())
+    row_tile_fn = getattr(lib, "triposplat_gemm_rnf8_avx512_row_tile", None)
+    if row_tile_fn is None:
+        row_tile = None
+    else:
+        row_tile_fn.argtypes = []
+        row_tile_fn.restype = ctypes.c_int
+        row_tile = int(row_tile_fn())
+    residual_mode_fn = getattr(lib, "triposplat_gemm_rnf8_avx512_residual_mode", None)
+    if residual_mode_fn is None:
+        library_residual_mode = "nf8"
+    else:
+        residual_mode_fn.argtypes = []
+        residual_mode_fn.restype = ctypes.c_int
+        mode_id = int(residual_mode_fn())
+        library_residual_mode = {0: "nf8", 1: "symmetric_int8"}.get(mode_id)
+        if library_residual_mode is None:
+            raise RuntimeError(f"unsupported residual mode id from library: {mode_id}")
+    if library_residual_mode != residual_mode:
+        raise RuntimeError(
+            f"residual quantizer/library mismatch: requested={residual_mode}, "
+            f"library={library_residual_mode}"
+        )
     pointer_count = 10
     full_kernel = lib.triposplat_gemm_rnf8_avx512
     full_kernel.argtypes = [ctypes.c_void_p] * pointer_count + [ctypes.c_int] * 7
@@ -212,7 +251,7 @@ def apply_triposplat_native_rnf8_avx512_patch(
             continue
         if module.weight.device.type != "cpu" or module.weight.dtype != torch.float32:
             raise ValueError(f"residual NF8 requires CPU float32 weight: {name}")
-        codes, scales, error = quantize_rnf8_per_output_channel(module.weight.detach(), codebook, stages)
+        codes, scales, error = quantize_rnf8_per_output_channel(module.weight.detach(), codebook, stages, residual_mode)
         bias = (
             torch.zeros(int(module.out_features), dtype=torch.float32)
             if module.bias is None
@@ -251,11 +290,14 @@ def apply_triposplat_native_rnf8_avx512_patch(
         "enabled": bool(selected),
         "kind": "native_residual_nonlinear_nf8_weight_only_avx512_linear_patch",
         "residual_stages": int(stages),
+        "first_stage_quantizer": "nf8",
+        "residual_quantizer": residual_mode,
         "bits_per_weight": int(stages * 8),
         "activation_dtype": "float32",
         "float32_weight_retained": False,
         "library_path": lib_path.as_posix(),
-        "symbols": ["triposplat_gemm_rnf8_avx512", "triposplat_gemm_rnf8_avx512_range", "triposplat_gemm_rnf8_avx512_tail"],
+        "row_tile": row_tile,
+        "symbols": ["triposplat_gemm_rnf8_avx512", "triposplat_gemm_rnf8_avx512_range", "triposplat_gemm_rnf8_avx512_tail", "triposplat_gemm_rnf8_avx512_row_tile", "triposplat_gemm_rnf8_avx512_residual_mode"],
         "threads": int(threads),
         "strict": True,
         "selected_count": len(selected),
@@ -269,5 +311,5 @@ def apply_triposplat_native_rnf8_avx512_patch(
         "aggregate_weight_max_abs": max_abs_error,
         "packing": packing,
         "runtime": runtime,
-        "semantics": "All selected Linear weights are a sum of two or three packed nonlinear NF8 residual code streams executed directly by AVX-512 GEMM.",
+        "semantics": "All selected Linear weights are a sum of packed 8-bit code streams executed directly by AVX-512 GEMM; stage 1 is NF8 and later stages use residual_quantizer.",
     }

@@ -1,5 +1,31 @@
 # TripoSplat CPU低リソース完全実装マイルストーン 2026-07-19
 
+> **2026-07-21更新:** 以下の本文は2026-07-19時点の計画として残す。現在はstrict
+> float32 AVX-512 s20、CPU raw画像からGaussian/viewerまでのend-to-end、全206
+> LinearのNFR8x3 packed AVX-512、NFR8x3 s20品質gateまで完了している。
+
+## 現在の到達点
+
+| milestone | 状態 | 現在の証跡 |
+|---|---|---|
+| M0 基準固定 | 完了 | CPU float32、strict native、GPU基準を固定 |
+| M1 s4品質 | 完了 | RNF8x3 s4 combined RMSE 1.16460e-4 |
+| M2 非線形量子化 | 完了 | NF8/RNF8/NFR8を比較 |
+| M3 SIMD面展開 | AVX-512で完了 | 全206 Linear、fallback 0。AVX2/ARMは対象外 |
+| M4 activation/attention | strict経路完了 | SDPA/MLP周辺native化。量子化activationは未採用 |
+| M5 s20 end-to-end | 最低gate完了 | 4640.813秒、combined RMSE 2.31568e-5、6視点平均76.24 dB |
+| M6 package | 部分完了 | exact end-to-end入口あり。NFR8統合入口と事前pack loadは未完了 |
+
+現在の具体的な残件:
+
+1. NFR8x3 s20を3600秒未満へ短縮する。
+2. 事前pack済みweight fileを直接loadし、起動時float32 weight peakを除く。
+3. NFR8x3をraw画像からviewerまでの再開可能な単一入口へ統合する。
+4. AVX-512以外のCPUを対象にする場合は別backendを追加する。
+
+量子化s20の詳細は
+`triposplat_nfr8x3_s20_validation_20260721_ja.md` を参照する。
+
 ## 完全実装の定義
 
 ここでの完全実装は、TripoSplatの機能を増やすことではない。GPU基準 `gpu_encoded_rmbg_1024_s20_g3_seed0_n262k_ref_renderer` と同じ入力に対して、CPU-onlyの低リソース実装が同等の推論結果、3DGS出力、viewer/renderer比較を再現できる状態を指す。

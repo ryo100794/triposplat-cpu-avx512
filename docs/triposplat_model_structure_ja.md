@@ -567,28 +567,32 @@ rot_0, rot_1, rot_2, rot_3
 
 ## 現在の実装状況
 
-追加済み:
+2026-07-21時点で追加・検証済み:
 
 - `triposplat_lowmem_export.py`
 - `triposplat_lowmem_sampler.py`
 - `compare_triposplat_ply.py`
 - `compare_triposplat_splat.py`
-- `test_lowmem_sampler_equivalence.py`
+- 全206 Linearのfloat32 AVX-512 backend
+- exact dense/key-bias/final-cross SDPA
+- GELU、SiLU、LayerNorm、RMSNorm、RoPE、RePo、CFG/Eulerのnative backend
+- raw画像から262,144 Gaussian、PLY/SPLAT、renderer、viewerまでのCPU end-to-end
+- 全206 LinearのNF8、residual NF8、NFR8x3 packed AVX-512 backend
 
-検証済み:
+strict float32 AVX-512 s20は3322.886秒、combined RMSE 2.06857e-5である。NFR8x3
+s20は4640.813秒、combined RMSE 2.31568e-5、packed/original weight 75.2599%で、
+6視点renderはstrict float32比平均76.24 dBだった。
 
-- export boundaryは合成Gaussianで本家PLY/SPLATとbyte完全一致
-- lowmem sampler wrapperは合成モデルで本家samplerと最大差0
-- CPU 1024/20/262k/seed0はメモリ4GB台で動くが、flow samplerが遅く、25分以上で0/20だった
-- 現在のCPU raw closestは `cpu_staged_rmbg_512_s12_g3_seed0`
-
-現在実行中:
-
-- `cpu_staged_rmbg_512_s16_g3_seed0_lowmem_export`
-- 目的: CPU only raw品質をGPU raw seed0基準へ近づける
+NFR8x3はruntimeで公式float32 weightをpackし、その後float32 Linear weightを保持
+しない。事前pack済みcheckpointを直接loadする実装ではないため、起動時peak削減は
+今後の課題である。
 
 ## まとめ
 
 TripoSplatの本体は、画像特徴を条件にしたflow matching transformerでlatent/cameraを生成し、それをoctree + Gaussian decoderで3D Gaussianへ変換する構造である。
 
-低リソース版を同等にするには、モデルを簡略化するのではなく、同じモデルを段階実行・streaming export・同等sampler wrapper・中間比較可能な形へ分解する必要がある。現時点で安全に置換できたのはexport境界で、次の本丸はsampler/decoderの同等な低リソース化である。
+低リソース版を同等にするには、モデルを簡略化するのではなく、同じモデルを段階実行・
+streaming export・同等sampler・中間比較可能な形へ分解する必要がある。現在は
+sampler、主要Flow演算、decoder/exportを含むCPU end-to-endとNFR8x3 s20まで検証済み
+である。次の本丸は、量子化品質を維持したまま3600秒未満へ短縮し、事前pack済み
+weightの直接loadで起動時memoryも減らすことである。

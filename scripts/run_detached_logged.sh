@@ -18,6 +18,7 @@ if [[ -s "${RUN_DIR}/job.pid" ]]; then
   fi
 fi
 
+rm -f "${RUN_DIR}/exit_code" "${RUN_DIR}/finished_epoch"
 nohup bash -c '
   set +e
   run_dir="$1"

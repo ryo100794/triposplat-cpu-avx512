@@ -9,6 +9,11 @@ static inline __m512 lookup16(const uint8_t* codes, const float* codebook) {
   const __m128i packed = _mm_loadu_si128((const __m128i*)codes);
   return _mm512_i32gather_ps(_mm512_cvtepu8_epi32(packed), codebook, 4);
 }
+static inline __m512 lookup16_i8(const uint8_t* codes) {
+  const __m128i packed = _mm_loadu_si128((const __m128i*)codes);
+  return _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(packed));
+}
+
 
 static inline __m512 decode16(
     const uint8_t* code0,
@@ -20,8 +25,8 @@ static inline __m512 decode16(
     __m512 scale2,
     int stages) {
   __m512 value = _mm512_mul_ps(lookup16(code0, codebook), scale0);
-  if (stages >= 2) value = _mm512_fmadd_ps(lookup16(code1, codebook), scale1, value);
-  if (stages >= 3) value = _mm512_fmadd_ps(lookup16(code2, codebook), scale2, value);
+  if (stages >= 2) value = _mm512_fmadd_ps(lookup16_i8(code1), scale1, value);
+  if (stages >= 3) value = _mm512_fmadd_ps(lookup16_i8(code2), scale2, value);
   return value;
 }
 
@@ -193,5 +198,5 @@ int triposplat_gemm_rnf8_avx512_row_tile(void) {
 }
 
 int triposplat_gemm_rnf8_avx512_residual_mode(void) {
-  return 0;
+  return 1;
 }

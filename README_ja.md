@@ -56,17 +56,36 @@ decode、PLY/SPLAT export、reference render、単一WebGL viewerまで実行す
 end-to-end runnerも実装済みです。1024 pixel、262,144 Gaussiansの1検証runが完走し、
 Flow部分はstrict baselineと同じ品質指標を維持しました。
 
-packed非線形量子化は実装済みですが、float32 s20を置き換える品質合格には未到達です。
+packed非線形量子化もs20検証まで完了しました。採用したNFR8x3は、1段目を
+非線形NF8、2段目と3段目を符号付き対称int8 residualとする方式です。1 weight
+あたり24 bitで、float32 Linear weightを保持せず、全206 LinearをAVX-512で
+packed状態のまま実行します。
 
-| Linear weight | packed/original byte | 1-step combined RMSE | 判定 |
+| Linear weight | packed/original byte | 検証 | 判定 |
 |---|---:|---:|---|
-| 1段NF8（8 bit） | 25.15% | 2.51245e-2 | 品質不合格 |
-| 2段residual NF8（16 bit） | 50.20% | 4.50681e-4 | 品質不合格 |
-| 3段residual NF8（24 bit） | 75.26% | 8.12530e-6 | 1-step合格、s20未実施 |
+| 1段NF8（8 bit） | 25.15% | s1 combined RMSE 2.51245e-2 | 品質不合格 |
+| 2段residual NF8（16 bit） | 50.20% | s1 combined RMSE 4.50681e-4 | 品質不合格 |
+| 3段NF8 residual（24 bit） | 75.26% | s4 combined RMSE 1.16460e-4 | s4合格 |
+| NFR8x3: NF8 + 2段signed-int8 residual（24 bit） | 75.26% | s20 combined RMSE 2.31568e-5 | s20合格 |
 
-全方式がcodebook indexをpacked状態のままAVX-512 GEMMで実行し、Linear fallbackは
-0でした。3段方式の1-stepは全体507.736秒、native packed Linear 332.770秒です。
-weight memory削減は確認済みですが、実用的なs20速度は未確立です。
+採用したNFR8x3のs20は全体4640.813秒、native packed Linear 2365.633秒で、
+Linear fallback、NaN、Infはいずれも0でした。元のCPU float32に対するlatent RMSEは
+3.25672e-5、camera RMSEは3.44202e-6です。strict native float32 Gaussianとの
+6視点render比較は平均PSNR 76.24 dB、worst view 69.33 dBでした。Linear weightは
+1,480,996,180 byteから1,114,596,688 byteへ減少しています。
+
+現在は公式float32 checkpointをloadした後にruntimeでpackします。pack後はfloat32
+Linear weightを解放しますが、事前pack済みweight loaderを実装するまでは起動時peakと
+元checkpoint file容量は減りません。
+
+これにより、品質を維持するpacked s20実装と、元のCPU float32 10856.388秒に対する
+2.34倍の高速化は確認できました。一方、strict native float32 AVX-512の3322.886秒
+より39.7%遅く、1時間未満の低リソース速度目標は未達です。残る課題はTripoSplatの
+意味を変えず、residual stageのdecode/GEMM overheadを削減することです。
+
+詳細は
+[`docs/triposplat_nfr8x3_s20_validation_20260721_ja.md`](docs/triposplat_nfr8x3_s20_validation_20260721_ja.md)
+に記録しています。
 
 ## 必要環境
 
@@ -126,6 +145,11 @@ zero-byte出力を防ぐため、runnerは出力確保前にcapacity probeを行
 ```bash
 STEPS=1 bash scripts/run_nf8_strict.sh
 STEPS=1 RNF8_STAGES=3 bash scripts/run_rnf8_strict.sh
+
+STEPS=20 RNF8_STAGES=3 \
+RNF8_RESIDUAL_MODE=symmetric_int8 \
+RNF8_LIBRARY=artifacts/backends/libtriposplat_gemm_nfr8_avx512.so \
+bash scripts/run_rnf8_strict.sh
 ```
 
 決定的な同条件のfloat32 reference NPZが必要です。生成される比較JSONを確認し、
