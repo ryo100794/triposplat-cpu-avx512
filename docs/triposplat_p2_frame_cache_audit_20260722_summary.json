@@ -1,0 +1,34 @@
+{
+  "date": "2026-07-22",
+  "profile": "strict_nf24_frame_reuse_probe",
+  "repeat": 2,
+  "frame_elapsed_sec": [
+    125.83733672648668,
+    123.10823665559292
+  ],
+  "second_over_first": 0.9783124775055786,
+  "all_outputs_equal": true,
+  "strict_baseline_hash_equal": true,
+  "position_cache": {
+    "hits": 1,
+    "misses": 1
+  },
+  "timestep_modulation_cache": {
+    "hits": 2,
+    "misses": 2,
+    "invalidated_outputs": 0,
+    "evictions": 0,
+    "reused_bytes": 28672,
+    "compute_seconds": 0.002306148409843445,
+    "lookup_seconds": 0.00022953003644943237
+  },
+  "packed_attention": {
+    "calls": 96,
+    "selected_row_calls": 2,
+    "key_bias_calls": 48,
+    "fallbacks": 0,
+    "workspace_allocations": 4,
+    "workspace_capacity_bytes": 201506816
+  },
+  "decision": "adopt_process_local_reuse; timestep_cache_is_exact_but_not_a_material_speed_source"
+}
