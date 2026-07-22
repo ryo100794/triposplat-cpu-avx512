@@ -1,0 +1,64 @@
+{
+  "date": "2026-07-22",
+  "scope": "CPU strict NF24 fusion, ordering and reuse review",
+  "mlp_streaming": {
+    "decision": "rejected",
+    "row8_fused_over_baseline": 1.330631,
+    "chunk_finalists": {
+      "baseline_median_sec": 0.7531582936644554,
+      "1024": {"median_sec": 0.8154982551932335, "workspace_bytes": 16777216},
+      "2048": {"median_sec": 0.7893596589565277, "workspace_bytes": 33554432},
+      "4096": {"median_sec": 0.7943830192089081, "workspace_bytes": 67108864},
+      "12294": {"median_sec": 0.7529863491654396, "workspace_bytes": 201424896}
+    },
+    "output_rmse": 0.0,
+    "output_max_abs": 0.0
+  },
+  "qkv_postprocess": {
+    "decision": "adopt_candidate",
+    "shape": [2, 6147, 16, 64],
+    "baseline_median_sec": 0.14388449490070343,
+    "candidate_median_sec": 0.018199346959590912,
+    "candidate_over_baseline": 0.1264858105256617,
+    "output_rmse": 0.0,
+    "output_max_abs": 0.0
+  },
+  "packed_sdpa": {
+    "standard_median_sec": 1.312810480594635,
+    "packed_median_sec": 1.3061861917376518,
+    "packed_over_standard": 0.9949541164129169,
+    "output_rmse": 0.0,
+    "output_max_abs": 0.0
+  },
+  "model_s1_paired": {
+    "baseline_forward_sec": 130.85382962226868,
+    "candidate_forward_sec": 123.05783700942993,
+    "forward_reduction_ratio": 0.059578,
+    "baseline_elapsed_sec": 150.09215641021729,
+    "candidate_elapsed_sec": 139.7916293144226,
+    "elapsed_reduction_ratio": 0.068628,
+    "combined_rmse": 0.0,
+    "max_abs": 0.0
+  },
+  "model_s4": {
+    "baseline_forward_sum_sec": 583.9946126937866,
+    "candidate_forward_sum_sec": 506.40675687789917,
+    "baseline_elapsed_sec": 605.2816212177277,
+    "candidate_elapsed_sec": 524.28156208992,
+    "calls": 188,
+    "key_bias_calls": 96,
+    "workspace_allocations": 4,
+    "workspace_capacity_bytes": 201506816,
+    "fallbacks": 0,
+    "combined_rmse": 0.0,
+    "max_abs": 0.0,
+    "speed_comparison_note": "Directional only because the baseline was a saved run, not a same-time paired run."
+  },
+  "next_strict_goals": [
+    "packed final positive selected-query path",
+    "NF24 QKV GEMM direct epilogue store",
+    "tail-only packed padding clear",
+    "production strict runner integration",
+    "paired s20 and peak RSS gate"
+  ]
+}
