@@ -5,6 +5,7 @@ import argparse
 import ctypes
 import json
 import os
+import statistics
 import time
 from pathlib import Path
 
@@ -17,7 +18,68 @@ def load_kernel(path: Path, symbol: str):
     fn = getattr(lib, symbol)
     fn.argtypes = [ctypes.c_void_p] * 5 + [ctypes.c_int] * 8
     fn.restype = ctypes.c_int
-    return fn
+    profile_reset = getattr(lib, "triposplat_sdpa_q8t512_profile_reset", None)
+    profile_get = getattr(lib, "triposplat_sdpa_q8t512_profile_get", None)
+    if profile_reset is not None:
+        profile_reset.argtypes = []
+        profile_reset.restype = None
+    if profile_get is not None:
+        profile_get.argtypes = [ctypes.POINTER(ctypes.c_uint64)] * 5
+        profile_get.restype = ctypes.c_int
+    workspace_get = getattr(lib, "triposplat_sdpa_q8t512_workspace_stats", None)
+    if workspace_get is not None:
+        workspace_get.argtypes = [ctypes.POINTER(ctypes.c_uint64)] * 2
+        workspace_get.restype = ctypes.c_int
+    key_tile = getattr(lib, "triposplat_sdpa_key_tile", None)
+    if key_tile is not None:
+        key_tile.argtypes = []
+        key_tile.restype = ctypes.c_int
+    query_block = getattr(lib, "triposplat_sdpa_query_block", None)
+    if query_block is not None:
+        query_block.argtypes = []
+        query_block.restype = ctypes.c_int
+    return fn, profile_reset, profile_get, workspace_get, key_tile, query_block
+
+
+def read_profile(profile_get, workspace_get, key_tile, query_block):
+    if profile_get is None:
+        return None
+    values = [ctypes.c_uint64() for _ in range(5)]
+    status = profile_get(*(ctypes.byref(value) for value in values))
+    if status != 0:
+        raise RuntimeError(f"native SDPA profile returned {status}")
+    calls, allocate_ns, pack_ns, compute_ns, free_ns = (value.value for value in values)
+    total_ns = allocate_ns + pack_ns + compute_ns + free_ns
+    workspace = None
+    if workspace_get is not None:
+        allocations = ctypes.c_uint64()
+        capacity_bytes = ctypes.c_uint64()
+        workspace_status = workspace_get(
+            ctypes.byref(allocations), ctypes.byref(capacity_bytes)
+        )
+        if workspace_status != 0:
+            raise RuntimeError(f"native SDPA workspace profile returned {workspace_status}")
+        workspace = {
+            "allocations_since_reset": allocations.value,
+            "capacity_bytes": capacity_bytes.value,
+        }
+    return {
+        "calls": calls,
+        "key_tile": None if key_tile is None else key_tile(),
+        "query_block": None if query_block is None else query_block(),
+        "workspace": workspace,
+        "allocate_sec": allocate_ns / 1.0e9,
+        "pack_sec": pack_ns / 1.0e9,
+        "compute_sec": compute_ns / 1.0e9,
+        "free_sec": free_ns / 1.0e9,
+        "total_sec": total_ns / 1.0e9,
+        "per_call_sec": {
+            "allocate": allocate_ns / max(calls, 1) / 1.0e9,
+            "pack": pack_ns / max(calls, 1) / 1.0e9,
+            "compute": compute_ns / max(calls, 1) / 1.0e9,
+            "free": free_ns / max(calls, 1) / 1.0e9,
+        },
+    }
 
 
 def call_kernel(fn, q, k, v, bias, out, threads):
@@ -55,6 +117,7 @@ def timed(fn, warmup, repeat):
     return {
         "times_sec": values,
         "min_sec": min(values),
+        "median_sec": statistics.median(values),
         "mean_sec": sum(values) / len(values),
         "max_sec": max(values),
     }
@@ -71,6 +134,7 @@ def main():
     parser.add_argument("--warmup", type=int, default=1)
     parser.add_argument("--repeat", type=int, default=2)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--skip-torch-timing", action="store_true")
     parser.add_argument("--output-json", type=Path, required=True)
     args = parser.parse_args()
 
@@ -78,7 +142,7 @@ def main():
     os.environ.setdefault("MKL_NUM_THREADS", str(args.torch_threads))
     torch.set_num_threads(args.torch_threads)
     torch.set_num_interop_threads(1)
-    fn = load_kernel(args.library, args.symbol)
+    fn, profile_reset, profile_get, workspace_get, key_tile, query_block = load_kernel(args.library, args.symbol)
     cases = args.case or ["self256,256,256,-1,0", "masked256,256,256,7,2.0", "cross193x256,193,256,-1,0"]
     generator = torch.Generator(device="cpu").manual_seed(args.seed)
     rows = []
@@ -101,8 +165,23 @@ def main():
         diff = observed - expected
         rmse = torch.sqrt(torch.mean(diff.square())).item()
         ref_rmse = torch.sqrt(torch.mean(expected.square())).item()
-        torch_stats = timed(lambda: F.scaled_dot_product_attention(q, k, v, attn_mask=mask), args.warmup, args.repeat)
-        native_stats = timed(lambda: call_kernel(fn, q, k, v, bias, observed, args.threads), args.warmup, args.repeat)
+        torch_stats = None
+        if not args.skip_torch_timing:
+            torch_stats = timed(
+                lambda: F.scaled_dot_product_attention(q, k, v, attn_mask=mask),
+                args.warmup,
+                args.repeat,
+            )
+        for _ in range(args.warmup):
+            call_kernel(fn, q, k, v, bias, observed, args.threads)
+        if profile_reset is not None:
+            profile_reset()
+        native_stats = timed(
+            lambda: call_kernel(fn, q, k, v, bias, observed, args.threads),
+            0,
+            args.repeat,
+        )
+        native_profile = read_profile(profile_get, workspace_get, key_tile, query_block)
         rows.append({
             "name": name,
             "shape_q": list(q.shape),
@@ -110,7 +189,11 @@ def main():
             "has_key_bias": bias is not None,
             "torch": torch_stats,
             "native_avx512": native_stats,
-            "speedup_vs_torch_mean": torch_stats["mean_sec"] / native_stats["mean_sec"],
+            "native_profile": native_profile,
+            "speedup_vs_torch_mean": (
+                None if torch_stats is None
+                else torch_stats["mean_sec"] / native_stats["mean_sec"]
+            ),
             "rmse": rmse,
             "relative_rmse": rmse / max(ref_rmse, 1.0e-30),
             "max_abs": diff.abs().max().item(),

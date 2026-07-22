@@ -1,18 +1,103 @@
 #include <immintrin.h>
 #include <math.h>
 #include <stdint.h>
+#include <stdatomic.h>
 #include <stdlib.h>
+#include <time.h>
 
 #ifdef _OPENMP
 #include <omp.h>
 #endif
 
+#ifndef KEY_TILE
+#define KEY_TILE 512
+#endif
+
+#ifndef QUERY_BLOCK
+#define QUERY_BLOCK 8
+#endif
+
+#if QUERY_BLOCK != 4 && QUERY_BLOCK != 8
+#error "QUERY_BLOCK must be 4 or 8"
+#endif
+
 enum {
   HEAD_DIM = 64,
-  QUERY_BLOCK = 8,
-  KEY_TILE = 512,
   SIMD_WIDTH = 16
 };
+
+static _Atomic uint64_t profile_calls;
+static _Atomic uint64_t profile_allocate_ns;
+static _Atomic uint64_t profile_pack_ns;
+static _Atomic uint64_t profile_compute_ns;
+static _Atomic uint64_t profile_free_ns;
+static _Atomic uint64_t profile_workspace_allocations;
+static _Thread_local float* packed_workspace;
+static _Thread_local size_t packed_workspace_bytes;
+
+static float* acquire_packed_workspace(size_t required_bytes) {
+  if (packed_workspace != NULL && packed_workspace_bytes >= required_bytes) {
+    return packed_workspace;
+  }
+  float* replacement = NULL;
+  if (posix_memalign((void**)&replacement, 64, required_bytes) != 0) return NULL;
+  free(packed_workspace);
+  packed_workspace = replacement;
+  packed_workspace_bytes = required_bytes;
+  atomic_fetch_add_explicit(&profile_workspace_allocations, 1, memory_order_relaxed);
+  return packed_workspace;
+}
+
+void triposplat_sdpa_q8t512_workspace_release(void) {
+  free(packed_workspace);
+  packed_workspace = NULL;
+  packed_workspace_bytes = 0;
+}
+
+int triposplat_sdpa_q8t512_workspace_stats(uint64_t* allocations, uint64_t* capacity_bytes) {
+  if (allocations == NULL || capacity_bytes == NULL) return -1;
+  *allocations = atomic_load_explicit(&profile_workspace_allocations, memory_order_relaxed);
+  *capacity_bytes = packed_workspace_bytes;
+  return 0;
+}
+
+int triposplat_sdpa_key_tile(void) {
+  return KEY_TILE;
+}
+
+int triposplat_sdpa_query_block(void) {
+  return QUERY_BLOCK;
+}
+
+static inline uint64_t elapsed_ns(const struct timespec* begin, const struct timespec* end) {
+  return (uint64_t)(end->tv_sec - begin->tv_sec) * 1000000000ull +
+         (uint64_t)(end->tv_nsec - begin->tv_nsec);
+}
+
+void triposplat_sdpa_q8t512_profile_reset(void) {
+  atomic_store_explicit(&profile_calls, 0, memory_order_relaxed);
+  atomic_store_explicit(&profile_allocate_ns, 0, memory_order_relaxed);
+  atomic_store_explicit(&profile_pack_ns, 0, memory_order_relaxed);
+  atomic_store_explicit(&profile_compute_ns, 0, memory_order_relaxed);
+  atomic_store_explicit(&profile_free_ns, 0, memory_order_relaxed);
+  atomic_store_explicit(&profile_workspace_allocations, 0, memory_order_relaxed);
+}
+
+int triposplat_sdpa_q8t512_profile_get(
+    uint64_t* calls,
+    uint64_t* allocate_ns,
+    uint64_t* pack_ns,
+    uint64_t* compute_ns,
+    uint64_t* free_ns) {
+  if (calls == NULL || allocate_ns == NULL || pack_ns == NULL || compute_ns == NULL ||
+      free_ns == NULL) return -1;
+  *calls = atomic_load_explicit(&profile_calls, memory_order_relaxed);
+  *allocate_ns = atomic_load_explicit(&profile_allocate_ns, memory_order_relaxed);
+  *pack_ns = atomic_load_explicit(&profile_pack_ns, memory_order_relaxed);
+  *compute_ns = atomic_load_explicit(&profile_compute_ns, memory_order_relaxed);
+  *free_ns = atomic_load_explicit(&profile_free_ns, memory_order_relaxed);
+  return 0;
+}
 
 static inline __m512 exp512_ps(__m512 x) {
   const __m512 exp_hi = _mm512_set1_ps(88.3762626647949f);
@@ -67,11 +152,19 @@ int triposplat_sdpa_f32_avx512_exact_q8t512(
   if (B <= 0 || H <= 0 || Lq <= 0 || Lk <= 0 || D != HEAD_DIM) return -2;
   if (has_key_bias && (key_bias_or_null == NULL || key_bias_len != Lk)) return -3;
 
+  struct timespec allocate_begin;
+  struct timespec allocate_end;
+  struct timespec pack_end;
+  struct timespec compute_end;
+  struct timespec free_end;
+  clock_gettime(CLOCK_MONOTONIC, &allocate_begin);
   const int Lkp = round_up_16(Lk);
   const int64_t bh_count = (int64_t)B * H;
   const int64_t packed_count = bh_count * HEAD_DIM * (int64_t)Lkp;
-  float* packed = NULL;
-  if (posix_memalign((void**)&packed, 64, (size_t)(2 * packed_count) * sizeof(float)) != 0) return -5;
+  const size_t packed_bytes = (size_t)(2 * packed_count) * sizeof(float);
+  float* packed = acquire_packed_workspace(packed_bytes);
+  if (packed == NULL) return -5;
+  clock_gettime(CLOCK_MONOTONIC, &allocate_end);
   float* packed_k = packed;
   float* packed_v = packed + packed_count;
 
@@ -103,6 +196,10 @@ int triposplat_sdpa_f32_avx512_exact_q8t512(
         }
       }
     }
+
+#pragma omp master
+    clock_gettime(CLOCK_MONOTONIC, &pack_end);
+#pragma omp barrier
 
 #pragma omp for schedule(static)
     for (int64_t block_index = 0; block_index < total_q_blocks; ++block_index) {
@@ -223,7 +320,14 @@ int triposplat_sdpa_f32_avx512_exact_q8t512(
     }
   }
 
-  free(packed);
+  clock_gettime(CLOCK_MONOTONIC, &compute_end);
+  free_end = compute_end;
+  atomic_fetch_add_explicit(&profile_calls, 1, memory_order_relaxed);
+  atomic_fetch_add_explicit(
+      &profile_allocate_ns, elapsed_ns(&allocate_begin, &allocate_end), memory_order_relaxed);
+  atomic_fetch_add_explicit(&profile_pack_ns, elapsed_ns(&allocate_end, &pack_end), memory_order_relaxed);
+  atomic_fetch_add_explicit(&profile_compute_ns, elapsed_ns(&pack_end, &compute_end), memory_order_relaxed);
+  atomic_fetch_add_explicit(&profile_free_ns, elapsed_ns(&compute_end, &free_end), memory_order_relaxed);
   return 0;
 }
 

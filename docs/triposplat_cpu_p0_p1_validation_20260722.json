@@ -1,0 +1,118 @@
+{
+  "schema": "triposplat_cpu_p0_p1_validation_v1",
+  "date": "2026-07-22",
+  "host": {
+    "cpu": "AMD EPYC 9654",
+    "architecture": "x86_64",
+    "cpuset": [26, 28, 81, 83],
+    "perf_event_paranoid": 4
+  },
+  "toolchains": {
+    "baseline": "GCC 9.4.0",
+    "candidate": "GCC 13.1.0 -march=znver4 -mtune=znver4",
+    "candidate_install_scope": "project-local"
+  },
+  "sdpa_gcc13_over_gcc9_4_threads": [
+    {
+      "sequence_length": 8194,
+      "gcc9_median_sec": 0.9933918491005898,
+      "gcc13_median_sec": 0.8405699282884598,
+      "candidate_over_baseline": 0.8461614911069646,
+      "rmse": 5.9855422840371375e-9,
+      "workspace_capacity_bytes": 67239936,
+      "allocations_after_warmup": 0
+    },
+    {
+      "sequence_length": 12294,
+      "gcc9_median_sec": 2.5971492528915405,
+      "gcc13_median_sec": 2.00641867518425,
+      "candidate_over_baseline": 0.7725465423099578,
+      "rmse": 5.105145639561215e-9,
+      "workspace_capacity_bytes": 100794368,
+      "allocations_after_warmup": 0
+    }
+  ],
+  "sdpa_query_block_4_over_8_4_threads": [
+    {
+      "sequence_length": 8194,
+      "query8_median_sec": 0.8976350203156471,
+      "query4_median_sec": 0.9553963094949722,
+      "query4_over_query8": 1.064348301784186,
+      "output_rmse": 5.9855422840371375e-9
+    },
+    {
+      "sequence_length": 12294,
+      "query8_median_sec": 2.0418021455407143,
+      "query4_median_sec": 2.2957344576716423,
+      "query4_over_query8": 1.1243667574184477,
+      "output_rmse": 5.105145639561215e-9
+    }
+  ],
+  "nf24_row_tile_8_over_16_4_threads": [
+    {
+      "shape": [12294, 1024, 4096],
+      "tile16_median_sec": 0.6489975675940514,
+      "tile8_median_sec": 0.4978249743580818,
+      "candidate_over_baseline": 0.7670675503509311,
+      "output_rmse": 0.0
+    },
+    {
+      "shape": [12294, 4096, 1024],
+      "tile16_median_sec": 0.6790213361382484,
+      "tile8_median_sec": 0.5391346886754036,
+      "candidate_over_baseline": 0.7939878468938655,
+      "output_rmse": 0.0
+    },
+    {
+      "shape": [12294, 1024, 3072],
+      "tile16_median_sec": 0.5213151648640633,
+      "tile8_median_sec": 0.30155275762081146,
+      "candidate_over_baseline": 0.5784461645182403,
+      "output_rmse": 0.0
+    },
+    {
+      "shape": [12294, 1024, 1024],
+      "tile16_median_sec": 0.18811071664094925,
+      "tile8_median_sec": 0.12085901945829391,
+      "candidate_over_baseline": 0.6424887513930425,
+      "output_rmse": 0.0
+    }
+  ],
+  "end_to_end": {
+    "tile16_s1_3_threads": {
+      "elapsed_sec": 230.8976068496704,
+      "linear_sec": 101.22700112313032,
+      "sdpa_sec": 94.23442033678293,
+      "combined_rmse": 2.2275901438911142e-5,
+      "fallbacks": 0
+    },
+    "tile8_s1_3_threads": {
+      "elapsed_sec": 185.34876608848572,
+      "linear_sec": 63.12974816560745,
+      "sdpa_sec": 86.67194664478302,
+      "combined_rmse": 2.2275901438911142e-5,
+      "fallbacks": 0
+    },
+    "tile8_s4_4_threads": {
+      "elapsed_sec": 605.2816212177277,
+      "linear_sec": 217.59889462590218,
+      "sdpa_sec": 306.03827679902315,
+      "combined_rmse": 9.85187562318968e-5,
+      "camera_rmse": 2.0560157615185917e-5,
+      "latent_rmse": 1.3780119947880904e-4,
+      "nan_inf": 0,
+      "fallbacks": 0
+    },
+    "tile8_s20_4_threads": {
+      "elapsed_sec": 2747.269686460495,
+      "linear_sec": 1008.4718271046877,
+      "sdpa_sec": 1432.3194386586547,
+      "combined_rmse": 9.376663857913138e-5,
+      "camera_rmse": 8.930551340810921e-6,
+      "latent_rmse": 1.3230498960208582e-4,
+      "nan_inf": 0,
+      "fallbacks": 0,
+      "speedup_vs_previous_nf24": 1.26355632907389
+    }
+  }
+}

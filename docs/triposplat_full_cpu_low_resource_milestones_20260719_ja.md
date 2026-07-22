@@ -3,6 +3,12 @@
 > **2026-07-21最終更新:** 以下の詳細本文は2026-07-19時点の計画・判断履歴として
 > 残す。現在はNF24 int16 + SDPA key tile 512のs20、事前pack直接load、
 > raw画像からviewerまでの単一入口まで実装・検証済みである。
+> 次期の演算順序、再利用、許容誤差付き近似、assembly判断は
+> [`triposplat_cpu_optimization_future_work_20260721_ja.md`](triposplat_cpu_optimization_future_work_20260721_ja.md)
+> を現行計画とする。
+> P0/P1の実測は
+> [`triposplat_cpu_p0_p1_validation_20260722_ja.md`](triposplat_cpu_p0_p1_validation_20260722_ja.md)
+> に記録する。
 
 ## 現在の到達点
 
@@ -13,18 +19,19 @@
 | M2 非線形量子化 | 完了 | NF8/RNF8/NFR8/NF24を比較しNF24 int16を採用 |
 | M3 SIMD面展開 | AVX-512で完了 | 全206 Linear、fallback 0。AVX2/ARMは対象外 |
 | M4 activation/attention | strict経路完了 | exact SDPA key tile 512と主要Flow native化 |
-| M5 s20 end-to-end | 完了 | 3471.330秒、combined RMSE 9.37666e-5、camera RMSE 8.93055e-6 |
+| M5 s20 end-to-end | 完了 | 2747.270秒、combined RMSE 9.37666e-5、camera RMSE 8.93055e-6 |
 | M6 package | 完了 | 事前pack直接loadとNF24 end-to-end単一入口を実装 |
+| M7 P1厳密最適化前半 | 完了 | GCC13、persistent SDPA、NF24 row tile 8で3000秒未満 |
 
 当初の具体的残件1-3は達成した。
 
-1. s20を3600秒未満へ短縮: 3471.330秒で達成。
+1. s20を3000秒未満へ短縮: 2747.270秒で達成。
 2. 事前pack済みweightの直接load: peak RSSを25.8%削減し、出力bit一致で達成。
 3. raw画像からviewerまでの単一入口: `scripts/run_cpu_low_resource_nf24.sh` で達成。
 
 次の性能目標は1800秒未満である。AVX-512以外のCPU対応は別backendの任意拡張として
 残る。最新の検証値は
-`triposplat_nf24_i16_q8t512_s20_validation_20260721_ja.md` を参照する。
+`triposplat_cpu_p0_p1_validation_20260722_ja.md` を参照する。
 
 ## 完全実装の定義
 

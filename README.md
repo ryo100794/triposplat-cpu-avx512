@@ -77,13 +77,15 @@ all 206 active Linear modules with zero fallback.
 | NF8, one stage (8 bits) | 25.15% | s1 combined RMSE 2.51245e-2 | rejected on quality |
 | Residual NF8, two stages (16 bits) | 50.20% | s1 combined RMSE 4.50681e-4 | rejected on quality |
 | NFR8x3, three streams (24 bits) | 75.26% | s20 combined RMSE 2.31568e-5 | quality pass, superseded on speed |
-| NF24 int16, combined first two stages (24 bits) | 75.11% | s20 combined RMSE 9.37666e-5 | selected; 3471.330 s |
+| NF24 int16, combined first two stages (24 bits) | 75.11% | s20 combined RMSE 9.37666e-5 | selected; 2747.270 s |
 
-The selected NF24 int16 + SDPA key-tile-512 s20 run took 3471.330 s, versus
-4640.813 s for the previous NFR8x3 run and 10856.388 s for the original CPU
-float32 baseline. Native packed Linear time was 1519.392 s, SDPA time was
-1645.894 s, camera RMSE was 8.93055e-6, and NaN/Inf/fallback counts were zero.
-This meets the under-3600-second gate without changing TripoSplat semantics.
+The selected NF24 int16 row-tile-8 + exact SDPA query-8/key-tile-512 s20 run took
+2747.270 s with a project-local GCC13 Zen 4 build. This is 724.060 s (20.9%)
+faster than the previous 3471.330 s NF24 implementation, 575.616 s faster than
+the strict float32 AVX-512 run, and 8109.118 s faster than the original CPU
+float32 baseline. Native packed Linear time was 1008.472 s, SDPA time was
+1432.319 s, camera RMSE was 8.93055e-6, and NaN/Inf/fallback counts were zero.
+This meets the under-3000-second gate without changing TripoSplat semantics.
 
 A resumable prepacked checkpoint format is also implemented. It stores
 1,113,368,944 bytes across 206 Linear shards plus non-Linear state. Direct load
@@ -97,6 +99,10 @@ Current evidence is in
 [`docs/triposplat_nf24_i16_q8t512_s20_validation_20260721_ja.md`](docs/triposplat_nf24_i16_q8t512_s20_validation_20260721_ja.md).
 The superseded NFR8x3 result remains documented in
 [`docs/triposplat_nfr8x3_s20_validation_20260721_ja.md`](docs/triposplat_nfr8x3_s20_validation_20260721_ja.md).
+The next optimization audit and prioritized future work are documented in
+[`docs/triposplat_cpu_optimization_future_work_20260721_ja.md`](docs/triposplat_cpu_optimization_future_work_20260721_ja.md).
+P0/P1 measurements and decisions are recorded in
+[`docs/triposplat_cpu_p0_p1_validation_20260722_ja.md`](docs/triposplat_cpu_p0_p1_validation_20260722_ja.md).
 
 ## Requirements
 
