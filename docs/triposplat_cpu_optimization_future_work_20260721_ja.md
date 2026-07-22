@@ -465,3 +465,33 @@ P0とP1前半の実測は
 
 次はP1後半のQKVからpacked K/Vへの直接store、streaming MLP、unified blockを行う。
 その後P2のframe間cache監査を完了し、P3のBF16 MLP/Vを別profileで評価する。
+
+
+## 13. 2026-07-22 P0-P5完了監査と継続課題
+
+P0-P5の初回実装・棄却監査は次の文書へ分離した。
+
+- P1後半: [`triposplat_p1_qkv_order_reuse_audit_20260722_ja.md`](triposplat_p1_qkv_order_reuse_audit_20260722_ja.md)
+- P2: [`triposplat_p2_frame_cache_audit_20260722_ja.md`](triposplat_p2_frame_cache_audit_20260722_ja.md)
+- P3: [`triposplat_p3_bounded_approx_audit_20260722_ja.md`](triposplat_p3_bounded_approx_audit_20260722_ja.md)
+- P4: [`triposplat_p4_model_evaluation_reduction_audit_20260722_ja.md`](triposplat_p4_model_evaluation_reduction_audit_20260722_ja.md)
+- P5: [`triposplat_p5_assembly_gate_audit_20260722_ja.md`](triposplat_p5_assembly_gate_audit_20260722_ja.md)
+
+今回までに、QKV後処理とpacked SDPAの48/48 coverage、frame-local cache、scratch共有、BF16感度、
+3 NFE solver、生成assemblyを実測した。現行runtimeへ新たに昇格する近似・assembly候補はない。
+strict側ではGEMM `-funroll-loops`が有望だが、3回paired中央値前なので正式採用していない。
+
+次の未達事項を具体的な継続ゴールとする。
+
+1. NF24 GEMM unrollをshape別dispatchし、baseline/candidate各3回のpaired s1中央値を取る。
+2. 1が安定して2%以上のwall短縮ならs4、s20へ昇格し、exact gateを再確認する。
+3. NF16 patchへpartial coverageを実装し、block 12/15 MLPだけNF16、残りNF24のmixed prepackを作る。
+4. BF16はroundtripではなく、block 12/15のfc1-GELU出力を保持したままfc2を`vdpbf16ps`で実行する。
+5. negative-condition圧縮loopへlate condition freeze N=2を統合し、正枝・負枝を別々に感度測定する。
+6. MLP tile寄与上限とattention残存mass上限をskipなしで記録し、有効tile比が低ければ実装を中止する。
+7. 次回strict s20でstep stateと正負velocityを保存し、s19/adaptive候補をoffline replayする。
+8. hardware counterが使えるhostでstall原因を特定し、Amdahl 5%を満たす場合だけstandalone `.S`を再検討する。
+
+演算見直しの優先順は、`exactなlayout/fusion -> frame/cache再利用 -> 低感度層の低精度dot ->
+寄与上限skip -> NFE削減 -> assembly`を維持する。前step QKV、state依存velocity、正conditionを
+strict cacheする案や、無根拠なtop-k/一括低精度化は引き続き採用しない。

@@ -1,0 +1,12 @@
+{
+  "date": "2026-07-22",
+  "profile": "fast_approx_probe",
+  "reference": {"solver": "euler", "steps": 4, "elapsed_sec": 524.281562, "forward_sec": 506.406757},
+  "candidates": {
+    "euler_s3": {"elapsed_sec": 384.4001884460449, "forward_sec": 366.4922385215759, "combined_rmse": 0.39929028954245127, "latent_rmse": 0.33795931827230097, "camera_rmse": 0.4523814428540485, "accepted": false},
+    "ab2_s3": {"elapsed_sec": 380.43591356277466, "forward_sec": 363.79339051246643, "combined_rmse": 0.5928968444549333, "latent_rmse": 0.5584262250199772, "camera_rmse": 0.6254706128501742, "accepted": false}
+  },
+  "runtime_adoptions": [],
+  "next_required_measurement": "strict s20 per-step state, positive/negative velocity, and local error checkpoints for offline replay",
+  "gdrive_verification": {"quant_flow_matching_files": 6, "audit_matching_files": 2, "differences": 0, "remote_run_artifacts_deleted_after_verification": true}
+}

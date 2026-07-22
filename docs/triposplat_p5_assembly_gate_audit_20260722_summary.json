@@ -1,0 +1,32 @@
+{
+  "date": "2026-07-22",
+  "baseline_s20_sec": 2747.269686460495,
+  "baseline_s20_linear_sec": 1008.4718271046877,
+  "baseline_s20_sdpa_sec": 1432.3194386586547,
+  "gemm_unroll": {
+    "shape_ratios": {
+      "12294x1024x4096": 0.9457886773026142,
+      "12294x4096x1024": 0.9037300199944163,
+      "12294x1024x3072": 0.961907465181758,
+      "12294x1024x1024": 0.9776075927858825
+    },
+    "all_outputs_exact": true,
+    "projected_s20_savings_sec": 62.9,
+    "projected_end_to_end_percent": 2.29,
+    "integrated_s1": {"elapsed_sec": 137.75161170959473, "linear_sec": 47.674310721457005, "fallbacks": 0, "combined_rmse": 0.0},
+    "status": "candidate_requires_three-run_paired_validation"
+  },
+  "sdpa_unroll": {
+    "length_8194_ratio": 1.0117091022384945,
+    "length_12294_ratio": 1.0022742841080607,
+    "all_outputs_exact": true,
+    "accepted": false
+  },
+  "assembly": {
+    "implemented": false,
+    "minimum_required_end_to_end_percent": 5.0,
+    "decision": "defer",
+    "reason": "generated hot loops already use ZMM/FMA and no measured candidate reaches the Amdahl gate"
+  },
+  "gdrive_verification": {"matching_files": 10, "differences": 0, "remote_run_artifacts_deleted_after_verification": true}
+}
