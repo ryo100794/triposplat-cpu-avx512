@@ -1,0 +1,114 @@
+{
+  "project": {
+    "slug": "triposplat-cpu-low-resource",
+    "title": "TripoSplat CPU最適化",
+    "subtitle": "単眼3D Gaussian Splatting / CPU low-resource implementation",
+    "phase": "HIGH-MEMORY PROFILE VALIDATION",
+    "status": "active",
+    "objective": "TripoSplatの出力品質を維持しながら、CPU低リソース実装を実用速度へ近づける",
+    "progress": 72,
+    "repository_url": "https://github.com/ryo100794/triposplat-cpu-avx512"
+  },
+  "milestones": [
+    {"slug":"official-baseline","title":"公式GPU基準確立","stage":"VALIDATION","status":"complete","progress":100,"summary":"公式sampleと対象frameでGPU品質基準を固定","sort_order":10},
+    {"slug":"nf24-model","title":"NF24非線形量子化","stage":"MODEL","status":"complete","progress":100,"summary":"206 LinearをNF24 int16へ置換","sort_order":20},
+    {"slug":"cpu-kernels","title":"AVX-512 CPU kernel","stage":"KERNEL","status":"complete","progress":100,"summary":"GEMM、SDPA、活性化、正規化をnative化","sort_order":30},
+    {"slug":"high-memory-s1","title":"高メモリs1検証","stage":"OPTIMIZATION","status":"complete","progress":100,"summary":"QKV/outのみFP32常駐、bit完全一致","sort_order":40},
+    {"slug":"paired-s4","title":"s4 paired反復","stage":"BENCHMARK","status":"pending","progress":0,"summary":"基準/候補を各3回交互測定","sort_order":50},
+    {"slug":"admission-s20","title":"s20正式採用gate","stage":"ADMISSION","status":"pending","progress":0,"summary":"20秒以上または1%以上短縮を確認","sort_order":60}
+  ],
+  "experiments": [
+    {
+      "slug":"high-memory-native-f32-s1","title":"QKV/out FP32常駐","category":"flow","variant":"nf24_materialized_direct_f32_paired3_s1","status":"passed","hardware":"AMD EPYC 9654 / 4 CPU","steps":1,"duration_sec":143.534352,"peak_rss_bytes":4254904320,"quality_status":"bit exact","executed_at":"2026-07-23T00:25:00Z",
+      "notes":"NF24の表現値を維持したまま56 LinearだけFP32へ展開。QKV 8.62%、process total 3.20%短縮。",
+      "metadata":{"fallbacks":0,"combined_rmse":0,"candidate_type":"high-memory"},
+      "metrics":[
+        {"name":"process_total","label":"Process total","value":196.387571,"unit":"seconds","baseline_value":202.884324,"direction":"lower"},
+        {"name":"sampler","label":"Sampler","value":143.534352,"unit":"seconds","baseline_value":148.163420,"direction":"lower"},
+        {"name":"qkv","label":"QKV projection","value":9.214090,"unit":"seconds","baseline_value":10.082868,"direction":"lower"},
+        {"name":"attention_out","label":"Attention out","value":3.057663,"unit":"seconds","baseline_value":3.329293,"direction":"lower"},
+        {"name":"rmse","label":"Combined RMSE","value":0,"unit":"rmse","direction":"lower"}
+      ]
+    },
+    {
+      "slug":"nf24-packed-v3-s1-baseline","title":"NF24 packed-v3 基準","category":"flow","variant":"nf24_packed_v3_paired2_s1","status":"passed","hardware":"AMD EPYC 9654 / 4 CPU","steps":1,"duration_sec":148.163420,"peak_rss_bytes":3163529216,"quality_status":"reference","executed_at":"2026-07-23T00:18:00Z",
+      "notes":"高メモリ候補と同一ホスト状態で隣接実行した比較基準。",
+      "metadata":{"candidate_type":"low-resource"},
+      "metrics":[
+        {"name":"process_total","label":"Process total","value":202.884324,"unit":"seconds","direction":"lower"},
+        {"name":"sampler","label":"Sampler","value":148.163420,"unit":"seconds","direction":"lower"},
+        {"name":"qkv","label":"QKV projection","value":10.082868,"unit":"seconds","direction":"lower"},
+        {"name":"attention_out","label":"Attention out","value":3.329293,"unit":"seconds","direction":"lower"}
+      ]
+    },
+    {
+      "slug":"nf24-low-resource-s20","title":"CPU低リソース s20","category":"end-to-end","variant":"NF24 packed-v3 selected profile","status":"passed","hardware":"AMD EPYC 9654 / 4 CPU","steps":20,"duration_sec":2747.270,"peak_rss_bytes":null,"quality_status":"accepted","executed_at":"2026-07-22T02:00:00Z",
+      "notes":"現在のCPU s20基準。高メモリ候補の正式採用比較元。",
+      "metadata":{"baseline":true},
+      "metrics":[{"name":"elapsed","label":"s20 elapsed","value":2747.270,"unit":"seconds","direction":"lower"}]
+    },
+    {
+      "slug":"materialized-mkl-s1","title":"PyTorch/MKL FP32展開","category":"linear","variant":"nf24_materialized_hybrid_s1","status":"rejected","hardware":"AMD EPYC 9654 / 4 CPU","steps":1,"duration_sec":209.397,"peak_rss_bytes":null,"quality_status":"RMSE 1.77e-6","executed_at":"2026-07-22T23:45:00Z",
+      "notes":"MKL OpenMPとnative libgompの混在でSDPAを含むprocess全体が低速化。",
+      "metadata":{"rejection":"mixed OpenMP runtime"},
+      "metrics":[{"name":"elapsed","label":"Sampler","value":209.397,"unit":"seconds","direction":"lower"},{"name":"rmse","label":"Combined RMSE","value":0.000001768,"unit":"rmse","direction":"lower"}]
+    },
+    {
+      "slug":"sdpa-tile1024","title":"SDPA key tile 1024","category":"sdpa","variant":"q8t1024","status":"rejected","hardware":"AMD EPYC 9654 / 4 CPU","steps":null,"duration_sec":null,"peak_rss_bytes":null,"quality_status":"finite","executed_at":"2026-07-23T00:32:00Z",
+      "notes":"L=12294でtile512比1.057倍。scratch増加がcache効率を悪化。",
+      "metadata":{},"metrics":[{"name":"ratio_l12294","label":"512比","value":1.056962,"unit":"ratio","direction":"lower"}]
+    },
+    {
+      "slug":"sdpa-tile2048","title":"SDPA key tile 2048","category":"sdpa","variant":"q8t2048","status":"rejected","hardware":"AMD EPYC 9654 / 4 CPU","steps":null,"duration_sec":null,"peak_rss_bytes":null,"quality_status":"finite","executed_at":"2026-07-23T00:34:00Z",
+      "notes":"L=12294でtile512比1.384倍。",
+      "metadata":{},"metrics":[{"name":"ratio_l12294","label":"512比","value":1.384466,"unit":"ratio","direction":"lower"}]
+    },
+    {
+      "slug":"high-memory-s4-gate","title":"高メモリ s4 paired gate","category":"flow","variant":"baseline/candidate x3 interleaved","status":"planned","hardware":"AMD EPYC 9654 / 4 CPU","steps":4,"duration_sec":null,"peak_rss_bytes":null,"quality_status":"pending","executed_at":null,
+      "notes":"QKV/out、全Linear、forward中央値とRSSを比較する。","metadata":{"runs_per_variant":3},"metrics":[]
+    },
+    {
+      "slug":"high-memory-s20-gate","title":"高メモリ s20 admission","category":"end-to-end","variant":"prepacked direct load","status":"planned","hardware":"AMD EPYC 9654 / 4 CPU","steps":20,"duration_sec":null,"peak_rss_bytes":null,"quality_status":"pending","executed_at":null,
+      "notes":"combined RMSE <= 5e-4、NaN/Inf/fallback 0、20秒以上または1%以上短縮を要求。","metadata":{"estimated_seconds":2724},"metrics":[]
+    }
+  ],
+  "artifacts": [
+    {"slug":"high-memory-audit-runs","title":"高メモリprofile監査run","kind":"benchmark","location":"gdrive:workspace/3dgs/sujinashi_triposplat/artifacts/audits/high_memory_native_f32_20260723","storage":"Google Drive","state":"archived","size_bytes":null,"checksum_state":"verified","experiment_slug":"high-memory-native-f32-s1","description":"6 runとmicrobenchmark一式。rclone check一致確認済み。"},
+    {"slug":"public-repository","title":"CPU最適化公開repository","kind":"source","location":"https://github.com/ryo100794/triposplat-cpu-avx512","storage":"GitHub","state":"available","size_bytes":null,"checksum_state":"git","experiment_slug":null,"description":"実装、再現script、監査文書。"},
+    {"slug":"nf24-checkpoint","title":"NF24 int16 packed checkpoint","kind":"model","location":"gdrive:workspace/3dgs/sujinashi_triposplat/artifacts/checkpoints","storage":"Google Drive","state":"archived","size_bytes":null,"checksum_state":"verified","experiment_slug":"nf24-low-resource-s20","description":"事前pack直接load用model。"},
+    {"slug":"reference-renderer","title":"GPU品質基準renderer結果","kind":"render","location":"gpu_encoded_rmbg_1024_s20_g3_seed0_n262k_ref_renderer","storage":"Google Drive","state":"archived","size_bytes":null,"checksum_state":"verified","experiment_slug":null,"description":"公式rendererを使った品質比較基準。"}
+  ],
+  "documents": [
+    {"slug":"high-memory-audit","title":"CPU 高メモリ速度モード監査","category":"benchmark","path":"docs/triposplat_high_memory_native_f32_audit_20260723_ja.md","summary":"QKV/out FP32常駐の実装、速度、RSS、採用gate。"},
+    {"slug":"model-structure","title":"TripoSplatモデル構造とパイプライン","category":"architecture","path":"docs/triposplat_model_structure_ja.md","summary":"単眼画像から不可視部とGaussian表現を推論する流れ。"},
+    {"slug":"pipeline-steps","title":"TripoSplat処理パイプライン","category":"pipeline","path":"docs/triposplat_pipeline_ja.md","summary":"入力から3DGS出力までのstep別処理。"},
+    {"slug":"parameter-guide","title":"探索パラメータ詳細","category":"reference","path":"docs/triposplat_parameter_guide_ja.md","summary":"評価で探索する生成・推論・rendererパラメータ。"},
+    {"slug":"optimization-roadmap","title":"CPU最適化ロードマップ","category":"roadmap","path":"docs/triposplat_cpu_optimization_roadmap_ja.md","summary":"SIMD、量子化、再利用、近似を含む未達事項。"},
+    {"slug":"p0-p1-validation","title":"P0/P1 CPU kernel検証","category":"benchmark","path":"docs/triposplat_cpu_p0_p1_validation_20260722_ja.md","summary":"kernel別ボトルネックと採否結果。"}
+  ],
+  "activities": [
+    {"event_key":"dashboard-start-20260723","kind":"dashboard","title":"進捗ダッシュボードを公開","detail":"独立PostgreSQL DB、port 10101、desktop/mobile Playwright検証に合格。","status":"complete","occurred_at":"2026-07-23T21:53:00Z"},
+    {"event_key":"high-memory-push-68414c2","kind":"source","title":"高メモリprofileをGitHubへ反映","detail":"commit 68414c2、8 files、740 insertions。","status":"complete","occurred_at":"2026-07-23T00:50:00Z"},
+    {"event_key":"high-memory-gdrive","kind":"artifact","title":"監査成果物をGoogle Driveへ退避","detail":"6 runとmicrobenchmarkをchecksum照合後、remote /tmpから削除。","status":"complete","occurred_at":"2026-07-23T00:58:00Z"},
+    {"event_key":"high-memory-s1-result","kind":"benchmark","title":"高メモリs1 paired比較完了","detail":"process total 3.20%、QKV 8.62%、Attention out 8.16%短縮。出力bit完全一致。","status":"complete","occurred_at":"2026-07-23T00:25:00Z"},
+    {"event_key":"sdpa-tile-audit","kind":"benchmark","title":"SDPA tile拡大を不採用","detail":"1024/2048/4096は全てtile512より低速。","status":"complete","occurred_at":"2026-07-23T00:35:00Z"},
+    {"event_key":"nf24-s20-baseline","kind":"benchmark","title":"CPU低リソースs20基準確立","detail":"NF24 packed-v3で2747.270秒。","status":"complete","occurred_at":"2026-07-22T02:00:00Z"}
+  ],
+  "settings": {
+    "baseline_s20_seconds": 2747.27,
+    "best_process_speedup_percent": 3.2,
+    "candidate_peak_rss_bytes": 4254904320,
+    "benchmark_chart": [
+      {"label":"QKV","detail":"10.083 → 9.214秒","bar_percent":91.4,"delta":"-8.62%","tone":""},
+      {"label":"Attention out","detail":"3.329 → 3.058秒","bar_percent":91.8,"delta":"-8.16%","tone":""},
+      {"label":"Process total","detail":"202.884 → 196.388秒","bar_percent":96.8,"delta":"-3.20%","tone":"time"},
+      {"label":"Peak RSS","detail":"2.95 → 3.96 GiB","bar_percent":100,"delta":"+1.02G","tone":"memory"}
+    ],
+    "admission_gates": [
+      {"title":"s1品質一致","detail":"latent / camera RMSE 0、fallback 0","done":true},
+      {"title":"事前pack直接load","detail":"runtime変換時の一時peakを除外","done":false},
+      {"title":"s4 paired反復","detail":"各3回、中央値でkernel改善を確認","done":false},
+      {"title":"s20 end-to-end","detail":"20秒以上または1%以上の短縮","done":false}
+    ]
+  }
+}

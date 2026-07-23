@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "triposplat-dashboard"
+version = "0.1.0"
+description = "PostgreSQL-backed operations dashboard for TripoSplat CPU research."
+requires-python = ">=3.11"
+dependencies = ["psycopg[binary]>=3.2,<4"]
+
+[project.scripts]
+triposplat-dashboard = "triposplat_dashboard.server:main"
+triposplat-dashboard-admin = "triposplat_dashboard.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

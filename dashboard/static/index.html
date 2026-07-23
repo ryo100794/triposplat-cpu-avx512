@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>TripoSplat CPU Lab</title>
+  <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-block">
+        <span class="brand-mark" aria-hidden="true">3D</span>
+        <div>
+          <strong>TripoSplat</strong>
+          <small>CPU Lab</small>
+        </div>
+      </div>
+      <nav class="primary-nav" aria-label="ダッシュボード表示">
+        <button class="nav-button active" data-view="overview" type="button">概要</button>
+        <button class="nav-button" data-view="experiments" type="button">実験</button>
+        <button class="nav-button" data-view="artifacts" type="button">成果物</button>
+        <button class="nav-button" data-view="activity" type="button">履歴</button>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="connection-dot" id="connection-dot"></span>
+        <span id="connection-label">接続確認中</span>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="project-phase">読み込み中</p>
+          <h1 id="project-title">TripoSplat CPU最適化</h1>
+        </div>
+        <div class="topbar-actions">
+          <span class="updated-at" id="updated-at">--</span>
+          <button class="refresh-button" id="refresh-button" type="button" title="最新データに更新" aria-label="最新データに更新">↻</button>
+        </div>
+      </header>
+
+      <section class="view active" id="view-overview" aria-labelledby="project-title">
+        <div class="status-band">
+          <div class="status-copy">
+            <div class="status-line">
+              <span class="status-pill" id="project-status">ACTIVE</span>
+              <span id="project-progress-label">0% 完了</span>
+            </div>
+            <h2 id="project-objective">データを取得しています</h2>
+          </div>
+          <div class="progress-ring" id="project-progress-ring" aria-label="全体進捗">
+            <strong id="project-progress-value">0%</strong>
+          </div>
+        </div>
+
+        <div class="metric-grid" id="metric-grid">
+          <article class="metric-tile"><span>実験</span><strong id="metric-experiments">--</strong><small id="metric-passed">--</small></article>
+          <article class="metric-tile accent-green"><span>s20 基準</span><strong id="metric-baseline">--</strong><small>NF24 CPU</small></article>
+          <article class="metric-tile accent-coral"><span>最大短縮</span><strong id="metric-speedup">--</strong><small>隣接s1 pair</small></article>
+          <article class="metric-tile accent-amber"><span>候補 Peak RSS</span><strong id="metric-memory">--</strong><small>高メモリprofile</small></article>
+        </div>
+
+        <section class="section-block pipeline-section">
+          <div class="section-heading">
+            <div><p class="section-kicker">PIPELINE</p><h2>実装と検証の現在地</h2></div>
+            <span class="section-count" id="milestone-count">--</span>
+          </div>
+          <div class="pipeline-track" id="pipeline-track"></div>
+        </section>
+
+        <div class="overview-grid">
+          <section class="section-block benchmark-section">
+            <div class="section-heading compact">
+              <div><p class="section-kicker">BENCHMARK</p><h2>高メモリ候補の効果</h2></div>
+              <span class="quality-badge">BIT EXACT</span>
+            </div>
+            <div class="benchmark-chart" id="benchmark-chart"></div>
+          </section>
+
+          <section class="section-block gate-section">
+            <div class="section-heading compact">
+              <div><p class="section-kicker">ADMISSION GATE</p><h2>正式採用条件</h2></div>
+            </div>
+            <div class="gate-list" id="gate-list"></div>
+          </section>
+        </div>
+
+        <section class="section-block system-section">
+          <div class="section-heading compact">
+            <div><p class="section-kicker">RUNTIME</p><h2>計算資源</h2></div>
+            <span class="live-label"><i></i> PostgreSQL</span>
+          </div>
+          <div class="system-grid" id="system-grid"></div>
+        </section>
+      </section>
+
+      <section class="view" id="view-experiments">
+        <div class="view-heading">
+          <div><p class="section-kicker">EXPERIMENTS</p><h2>速度・品質・メモリ比較</h2></div>
+          <div class="filter-group" id="experiment-filters" aria-label="実験フィルター">
+            <button class="filter-button active" data-filter="all" type="button">すべて</button>
+            <button class="filter-button" data-filter="passed" type="button">採用</button>
+            <button class="filter-button" data-filter="rejected" type="button">不採用</button>
+            <button class="filter-button" data-filter="planned" type="button">予定</button>
+          </div>
+        </div>
+        <div class="experiment-layout">
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>実験</th><th>状態</th><th>Steps</th><th>時間</th><th>Peak RSS</th><th>品質</th></tr></thead>
+              <tbody id="experiment-rows"></tbody>
+            </table>
+          </div>
+          <aside class="detail-panel" id="experiment-detail"><p class="empty-state">実験を選択してください</p></aside>
+        </div>
+      </section>
+
+      <section class="view" id="view-artifacts">
+        <div class="view-heading">
+          <div><p class="section-kicker">ARTIFACTS</p><h2>成果物と技術文書</h2></div>
+          <label class="search-field"><span>検索</span><input id="artifact-search" type="search" placeholder="名前・種別・保存先"></label>
+        </div>
+        <section class="section-block artifact-section">
+          <div class="section-heading compact"><h2>成果物</h2><span class="section-count" id="artifact-count">--</span></div>
+          <div class="artifact-list" id="artifact-list"></div>
+        </section>
+        <section class="section-block document-section">
+          <div class="section-heading compact"><h2>ドキュメント</h2><span class="section-count" id="document-count">--</span></div>
+          <div class="document-grid" id="document-grid"></div>
+        </section>
+      </section>
+
+      <section class="view" id="view-activity">
+        <div class="view-heading"><div><p class="section-kicker">ACTIVITY</p><h2>作業履歴</h2></div></div>
+        <section class="timeline" id="activity-timeline"></section>
+      </section>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/static/dashboard.js" defer></script>
+</body>
+</html>
