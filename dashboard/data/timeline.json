@@ -1,0 +1,110 @@
+[
+  {
+    "slug": "source-frame",
+    "occurred_at": "2026-06-21T07:24:44Z",
+    "phase": "SOURCE",
+    "title": "動画から単眼frameを選定",
+    "summary": "対象streamを確認し、CPU one-frame検証を開始。",
+    "metric_label": "入力",
+    "metric_value": 1,
+    "metric_unit": "frame",
+    "status": "complete",
+    "sort_order": 10
+  },
+  {
+    "slug": "official-gpu-baseline",
+    "occurred_at": "2026-06-24T00:00:00Z",
+    "phase": "VALIDATION",
+    "title": "公式TripoSplat GPU基準を確立",
+    "summary": "公式sampleと対象画像で推論・Gaussian decode・公式rendererを確認。",
+    "metric_label": "生成条件",
+    "metric_value": 20,
+    "metric_unit": "steps / 1024px",
+    "status": "complete",
+    "sort_order": 20
+  },
+  {
+    "slug": "gaussian-viewer",
+    "occurred_at": "2026-06-29T00:00:00Z",
+    "phase": "OUTPUT",
+    "title": "3DGS viewerと正面比較を整備",
+    "summary": "WebGL viewer、入力視点renderer、CPU/GPU contact sheetを生成。",
+    "metric_label": "Gaussian",
+    "metric_value": 262144,
+    "metric_unit": "points",
+    "status": "complete",
+    "sort_order": 30
+  },
+  {
+    "slug": "cpu-original-baseline",
+    "occurred_at": "2026-07-07T00:00:00Z",
+    "phase": "BASELINE",
+    "title": "オリジナルCPU s20を計測",
+    "summary": "最適化効果を判定するwall-time基準を固定。",
+    "metric_label": "処理時間",
+    "metric_value": 10856.388,
+    "metric_unit": "seconds",
+    "status": "complete",
+    "sort_order": 40
+  },
+  {
+    "slug": "native-avx512",
+    "occurred_at": "2026-07-20T00:00:00Z",
+    "phase": "NATIVE CPU",
+    "title": "AVX-512 native s20が合格",
+    "summary": "GEMM、SDPA、活性化、正規化、samplerをnative化。fallback 0。",
+    "metric_label": "短縮",
+    "metric_value": 3.27,
+    "metric_unit": "x faster",
+    "status": "complete",
+    "sort_order": 50
+  },
+  {
+    "slug": "nf24-low-resource",
+    "occurred_at": "2026-07-22T02:00:00Z",
+    "phase": "QUANTIZATION",
+    "title": "NF24低リソースs20を確立",
+    "summary": "206 Linearを非線形NF24 int16へ置換し、選定CPU profileを完走。",
+    "metric_label": "処理時間",
+    "metric_value": 2747.27,
+    "metric_unit": "seconds",
+    "status": "complete",
+    "sort_order": 60
+  },
+  {
+    "slug": "high-memory-profile",
+    "occurred_at": "2026-07-23T00:25:00Z",
+    "phase": "MEMORY TRADEOFF",
+    "title": "QKV/out高メモリprofileを実証",
+    "summary": "56 LinearだけFP32常駐。出力bit完全一致、QKV 8.62%短縮。",
+    "metric_label": "process短縮",
+    "metric_value": 3.2,
+    "metric_unit": "percent",
+    "status": "complete",
+    "sort_order": 70
+  },
+  {
+    "slug": "work-dashboard",
+    "occurred_at": "2026-07-23T21:53:00Z",
+    "phase": "OPERATIONS",
+    "title": "進捗・成果物dashboardを公開",
+    "summary": "独立PostgreSQL DB、実験比較、画像成果物、作業履歴を統合。",
+    "metric_label": "管理対象",
+    "metric_value": 8,
+    "metric_unit": "experiments",
+    "status": "complete",
+    "sort_order": 80
+  },
+  {
+    "slug": "maintenance-queue",
+    "occurred_at": "2026-07-23T22:10:00Z",
+    "phase": "MAINTENANCE",
+    "title": "GDrive継続退避queueを導入",
+    "summary": "lease、heartbeat、retry、checksum照合後削除をDB queueで管理。",
+    "metric_label": "実行間隔",
+    "metric_value": 60,
+    "metric_unit": "minutes",
+    "status": "running",
+    "sort_order": 90
+  }
+]

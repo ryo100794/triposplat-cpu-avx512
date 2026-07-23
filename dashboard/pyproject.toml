@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 dependencies = ["psycopg[binary]>=3.2,<4"]
 
 [project.scripts]
-triposplat-dashboard = "triposplat_dashboard.server:main"
+triposplat-dashboard = "triposplat_dashboard.server_v2:main"
 triposplat-dashboard-admin = "triposplat_dashboard.cli:main"
 
 [tool.setuptools.packages.find]
