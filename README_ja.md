@@ -98,6 +98,13 @@ P0/P1の実測と採否理由は
 [`docs/triposplat_cpu_p0_p1_validation_20260722_ja.md`](docs/triposplat_cpu_p0_p1_validation_20260722_ja.md)
 に記録しています。
 
+高メモリopt-in profileも実装しました。28個のQKVと28個のAttention出力だけ、同じNF24値を
+FP32へ展開してnative AVX-512で実行します。隣接s1 pairではQKVを8.62%、process totalを
+3.20%短縮し、出力はbit完全一致でした。観測peak RSSは低リソース版より約0.34から1.02 GiB
+増えました。MLPはNF24、SDPA key tileは512を維持します。s4/s20 gate前の候補であり、詳細は
+[`docs/triposplat_high_memory_native_f32_audit_20260723_ja.md`](docs/triposplat_high_memory_native_f32_audit_20260723_ja.md)
+に記録しています。
+
 ## 必要環境
 
 - AVX-512F/DQ/BW/VLとFMAを備えたLinux x86-64 CPU
@@ -192,6 +199,15 @@ TRIPOSPLAT_RNF8_PREPACKED_DIR=/path/to/triposplat_nf24_i16_v1 \
 bash scripts/run_cpu_low_resource_nf24.sh
 ```
 
+高メモリFlow profileの評価入口:
+
+```bash
+STEPS=20 \
+TRIPOSPLAT_RNF8_PREPACKED_DIR=/path/to/triposplat_nf24_i16_v1 \
+REFERENCE_NPZ=/path/to/reference_s20/base_latent.npz \
+bash scripts/run_nf24_materialized_speed_probe.sh
+```
+
 ## SDPA単体測定
 
 ```bash
@@ -212,6 +228,7 @@ bash scripts/build_native_sdpa_avx512_exact_q8.sh
 - `scripts/run_s20_strict.sh`: parameter固定のs20検証entry point
 - `scripts/run_cpu_end_to_end_strict.sh`: raw画像からGaussian/viewerまでのpipeline
 - `scripts/run_cpu_low_resource_nf24.sh`: 採用NF24 s20のend-to-end単一入口
+- `scripts/run_nf24_materialized_speed_probe.sh`: 高メモリNF24/FP32 Flow profile
 - `scripts/pack_triposplat_nf24_i16_checkpoint.py`: 再開可能なpacked checkpoint converter
 - `scripts/run_nf8_strict.sh`, `scripts/run_rnf8_strict.sh`: packed非線形量子化評価
 - `scripts/run_triposplat_quantized_param_batch.py`: 実験・trace runner

@@ -3,12 +3,175 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
+import time
+import types
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable
 
 
 FORMAT = "triposplat_nf24_i16_v1"
+
+
+def decode_nf24_i16_weight_t(code01_t, q2_t, scale):
+    """Materialize exact NF24 values in the native GEMM [in, out] layout."""
+    import torch
+
+    if code01_t.dtype != torch.int16 or q2_t.dtype != torch.int8:
+        raise ValueError("NF24 decode requires int16 code01_t and int8 q2_t")
+    if tuple(code01_t.shape) != tuple(q2_t.shape):
+        raise ValueError("NF24 code tensor shape mismatch")
+    if scale.dtype != torch.float32 or scale.ndim != 1 or scale.numel() != code01_t.shape[1]:
+        raise ValueError("NF24 scale shape mismatch")
+    combined = torch.bitwise_left_shift(code01_t.to(torch.int32), 8)
+    combined.add_(q2_t.to(torch.int32))
+    weight_t = combined.to(torch.float32)
+    weight_t.mul_(scale.reshape(1, -1))
+    return weight_t
+
+
+def decode_nf24_i16_weight(code01_t, q2_t, scale):
+    """Materialize exact NF24 values as a contiguous [out, in] Linear weight."""
+    return decode_nf24_i16_weight_t(code01_t, q2_t, scale).t().contiguous()
+
+
+def materialize_nf24_i16_linears(
+    model,
+    *,
+    include_regex: str | None = None,
+    native_weight_t_view: bool = False,
+    release_packed: bool = True,
+    profile: bool = True,
+):
+    """Replace packed NF24 Linear forwards with FP32 BLAS-compatible weights.
+
+    The represented weight values do not change. Only GEMM accumulation order changes.
+    A range helper is retained for packed-v3 selected-query Attention.
+    """
+    import torch.nn as nn
+    import torch.nn.functional as F
+
+    include = re.compile(include_regex) if include_regex else None
+    available_names = {
+        name
+        for name, module in model.named_modules()
+        if isinstance(module, nn.Linear) and hasattr(module, "_native_rnf8_codes0_t")
+    }
+    if not available_names:
+        raise RuntimeError("no packed NF24 Linear modules found to materialize")
+    packed_names = {
+        name for name in available_names if include is None or include.search(name) is not None
+    }
+    if not packed_names:
+        raise RuntimeError(f"NF24 materialization selected no modules with {include_regex!r}")
+
+    runtime = {
+        "calls": 0,
+        "range_calls": 0,
+        "rows": 0,
+        "seconds": 0.0,
+        "per_module": {},
+    }
+    weight_bytes = 0
+    bias_bytes = 0
+
+    def record(name: str, rows: int, elapsed: float, is_range: bool) -> None:
+        runtime["calls"] += 1
+        runtime["range_calls"] += int(is_range)
+        runtime["rows"] += rows
+        runtime["seconds"] += elapsed
+        item = runtime["per_module"].setdefault(
+            name, {"calls": 0, "range_calls": 0, "rows": 0, "seconds": 0.0}
+        )
+        item["calls"] += 1
+        item["range_calls"] += int(is_range)
+        item["rows"] += rows
+        item["seconds"] += elapsed
+
+    def make_forward(name: str):
+        def forward(self, x):
+            started = time.perf_counter() if profile else 0.0
+            out = F.linear(x, self.weight, self.bias)
+            if profile:
+                record(name, int(x.numel() // x.shape[-1]), time.perf_counter() - started, False)
+            return out
+
+        return forward
+
+    def make_range_forward(name: str):
+        def range_forward(self, x, output_start: int, output_count: int):
+            start = int(output_start)
+            count = int(output_count)
+            if start < 0 or count <= 0 or start + count > int(self.out_features):
+                raise ValueError(f"invalid materialized NF24 output range for {name}")
+            started = time.perf_counter() if profile else 0.0
+            bias = None if self.bias is None else self.bias[start:start + count]
+            out = F.linear(x, self.weight[start:start + count], bias)
+            if profile:
+                record(name, int(x.numel() // x.shape[-1]), time.perf_counter() - started, True)
+            return out
+
+        return range_forward
+
+    selected = []
+    for name, module in model.named_modules():
+        if name not in packed_names:
+            continue
+        code01_t = module._native_rnf8_codes0_t
+        q2_t = module._native_rnf8_codes1_t
+        scale = module._native_rnf8_scales0
+        bias = module._native_rnf8_bias
+        if native_weight_t_view:
+            weight = decode_nf24_i16_weight_t(code01_t, q2_t, scale).t()
+        else:
+            weight = decode_nf24_i16_weight(code01_t, q2_t, scale)
+        module.weight = nn.Parameter(weight, requires_grad=False)
+        module.bias = nn.Parameter(bias, requires_grad=False)
+        module.forward = types.MethodType(make_forward(name), module)
+        module._native_avx512_forward_range = types.MethodType(make_range_forward(name), module)
+        weight_bytes += weight.numel() * weight.element_size()
+        bias_bytes += bias.numel() * bias.element_size()
+        selected.append(name)
+
+        if release_packed:
+            for attr in (
+                "_native_rnf8_codes0_t",
+                "_native_rnf8_codes1_t",
+                "_native_rnf8_codes2_t",
+                "_native_rnf8_scales0",
+                "_native_rnf8_scales1",
+                "_native_rnf8_scales2",
+                "_native_rnf8_codebook",
+                "_native_rnf8_bias",
+            ):
+                if hasattr(module, attr):
+                    delattr(module, attr)
+
+    metadata = {
+        "enabled": True,
+        "kind": "nf24_i16_materialized_fp32_blas_linear",
+        "selected_count": len(selected),
+        "selected": selected,
+        "available_count": len(available_names),
+        "include_regex": include_regex,
+        "weight_layout": (
+            "noncontiguous_out_in_view_of_contiguous_in_out"
+            if native_weight_t_view else "contiguous_out_in"
+        ),
+        "weight_bytes": weight_bytes,
+        "bias_bytes": bias_bytes,
+        "packed_buffers_released": bool(release_packed),
+        "activation_dtype": "float32",
+        "weight_dtype": "float32",
+        "source_values": "NF24 int16 nonlinear quantized weights",
+        "range_api": "torch.nn.functional.linear output-row slice",
+        "profile_enabled": bool(profile),
+        "runtime": runtime,
+        "semantics": "Materializes the same NF24 code values once; BLAS changes only GEMM accumulation order.",
+    }
+    model._nf24_materialized_linear = metadata
+    return metadata
 
 
 def _sha256(path: Path) -> str:

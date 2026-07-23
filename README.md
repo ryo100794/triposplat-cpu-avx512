@@ -104,6 +104,14 @@ The next optimization audit and prioritized future work are documented in
 P0/P1 measurements and decisions are recorded in
 [`docs/triposplat_cpu_p0_p1_validation_20260722_ja.md`](docs/triposplat_cpu_p0_p1_validation_20260722_ja.md).
 
+An opt-in high-memory profile materializes the same NF24 values for the 28 QKV
+and 28 Attention-output Linear layers and executes them with the native FP32
+AVX-512 kernel. An adjacent s1 pair reduced QKV time by 8.62% and total process
+time by 3.20% with bit-identical output, while peak RSS increased by about
+0.34-1.02 GiB across observed runs. MLP weights remain NF24 and SDPA keeps the
+512-key tile. This profile is pending s4/s20 admission; see
+[`docs/triposplat_high_memory_native_f32_audit_20260723_ja.md`](docs/triposplat_high_memory_native_f32_audit_20260723_ja.md).
+
 ## Requirements
 
 - Linux x86-64 CPU with AVX-512F, AVX-512DQ, AVX-512BW, AVX-512VL, and FMA.
@@ -206,6 +214,15 @@ TRIPOSPLAT_RNF8_PREPACKED_DIR=/path/to/triposplat_nf24_i16_v1 \
 bash scripts/run_cpu_low_resource_nf24.sh
 ```
 
+Evaluate the opt-in high-memory Flow profile with:
+
+```bash
+STEPS=20 \
+TRIPOSPLAT_RNF8_PREPACKED_DIR=/path/to/triposplat_nf24_i16_v1 \
+REFERENCE_NPZ=/path/to/reference_s20/base_latent.npz \
+bash scripts/run_nf24_materialized_speed_probe.sh
+```
+
 ## SDPA microbenchmark
 
 ```bash
@@ -227,6 +244,7 @@ set.
 - `scripts/run_s20_strict.sh`: parameter-locked validation entry point.
 - `scripts/run_cpu_end_to_end_strict.sh`: raw-image to Gaussian/viewer pipeline.
 - `scripts/run_cpu_low_resource_nf24.sh`: selected NF24 s20 end-to-end entry point.
+- `scripts/run_nf24_materialized_speed_probe.sh`: opt-in high-memory NF24/FP32 Flow profile.
 - `scripts/pack_triposplat_nf24_i16_checkpoint.py`: resumable packed-checkpoint converter.
 - `scripts/run_nf8_strict.sh`, `scripts/run_rnf8_strict.sh`: packed nonlinear
   quantization evaluation entry points.

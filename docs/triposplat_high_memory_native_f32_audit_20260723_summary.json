@@ -1,0 +1,55 @@
+{
+  "date": "2026-07-23",
+  "hardware": "AMD EPYC 9654, 4 CPU affinity",
+  "mode": "NF24 values materialized as native FP32 for QKV and Attention output only",
+  "selected_linears": 56,
+  "selected_weight_elements": 117440512,
+  "selected_nf24_weight_bytes": 352321536,
+  "selected_fp32_weight_bytes": 469762048,
+  "persistent_weight_delta_bytes": 117440512,
+  "microbenchmark_m12294": {
+    "qkv_1024x3072": {
+      "nf24_sec": 0.331979,
+      "native_f32_sec": 0.218777,
+      "candidate_over_baseline": 0.6590,
+      "output_rmse": 0.0
+    },
+    "attention_out_1024x1024": {
+      "nf24_sec": 0.074678,
+      "native_f32_sec": 0.071998,
+      "candidate_over_baseline": 0.9641,
+      "output_rmse": 0.0
+    },
+    "mlp_fc1_1024x4096": {
+      "candidate_over_baseline": 1.0251,
+      "decision": "keep_nf24"
+    },
+    "mlp_fc2_4096x1024": {
+      "candidate_over_baseline": 1.2161,
+      "decision": "keep_nf24"
+    }
+  },
+  "adjacent_s1_pair_fast_host_state": {
+    "baseline_elapsed_sec": 148.163420,
+    "candidate_elapsed_sec": 143.534352,
+    "elapsed_reduction_percent": 3.124,
+    "baseline_forward_sec": 126.791789,
+    "candidate_forward_sec": 125.869769,
+    "qkv_reduction_percent": 8.616,
+    "attention_out_reduction_percent": 8.159,
+    "baseline_process_total_sec": 202.884324,
+    "candidate_process_total_sec": 196.387571,
+    "process_total_reduction_percent": 3.202,
+    "baseline_peak_rss_bytes": 3163529216,
+    "candidate_peak_rss_bytes": 4254904320,
+    "combined_rmse": 0.0,
+    "fallbacks": 0
+  },
+  "sdpa_key_tile_candidate_over_512": {
+    "1024": {"L8194": 1.076947, "L12294": 1.056962},
+    "2048": {"L8194": 1.427032, "L12294": 1.384466},
+    "4096": {"L8194": 1.530443, "L12294": 1.330080}
+  },
+  "decision": "opt_in_candidate_pending_s4_s20_gate",
+  "default_low_resource_mode": "all 206 Linear weights remain NF24"
+}
