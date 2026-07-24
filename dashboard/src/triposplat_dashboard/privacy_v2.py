@@ -12,6 +12,7 @@ PUBLIC_TIMELINE_COPY = {
         "summary": "実験比較、画像成果物、工程別の定量指標を一画面に統合。",
     },
     "maintenance-queue": {
+        "slug": "automatic-preservation",
         "phase": "PRESERVATION",
         "title": "成果物の自動保管を開始",
         "summary": "未使用成果物の確認、整合性検証、保管完了後の整理を自動化。",

@@ -518,6 +518,12 @@ latent/camera hash一致、fallback 0だった。
 Linearは3.11%短縮した。全6 runでlatent/camera hash一致、fallback 0を維持したため、
 同時刻baselineと比較するs20正式採用gateへ昇格した。
 
+`EXACT-05`の同時刻s20比較はbaseline 2744.50秒、candidate 2731.50秒で、13.01秒、
+0.47%の短縮だった。Linearは1067.24秒から1058.59秒へ8.66秒、0.81%短縮し、選択kernelは
+2008回実行された。latent/camera hashは完全一致、fallback 0を維持したが、正式採用条件の
+20秒または1%以上には届かなかった。そのため選択dispatchは検証済み候補として保持するが、
+strict既定経路には昇格せず、次の支配項であるSDPA exact最適化へ進む。
+
 ### G2: SDPA exact最適化
 
 1. `SDPA-01`: QK、online softmax、PVを実sequence長で個別計測する。

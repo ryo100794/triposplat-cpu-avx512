@@ -73,10 +73,10 @@
     }
   ],
   "artifacts": [
-    {"slug":"high-memory-audit-runs","title":"高メモリprofile監査run","kind":"benchmark","location":"gdrive:workspace/3dgs/sujinashi_triposplat/artifacts/audits/high_memory_native_f32_20260723","storage":"Google Drive","state":"archived","size_bytes":null,"checksum_state":"verified","experiment_slug":"high-memory-native-f32-s1","description":"6 runとmicrobenchmark一式。rclone check一致確認済み。"},
+    {"slug":"high-memory-audit-runs","title":"高メモリprofile監査run","kind":"benchmark","location":"","storage":"自動保管","state":"archived","size_bytes":null,"checksum_state":"verified","experiment_slug":"high-memory-native-f32-s1","description":"6 runとmicrobenchmark一式。整合性確認済み。"},
     {"slug":"public-repository","title":"CPU最適化公開repository","kind":"source","location":"https://github.com/ryo100794/triposplat-cpu-avx512","storage":"GitHub","state":"available","size_bytes":null,"checksum_state":"git","experiment_slug":null,"description":"実装、再現script、監査文書。"},
-    {"slug":"nf24-checkpoint","title":"NF24 int16 packed checkpoint","kind":"model","location":"gdrive:workspace/3dgs/sujinashi_triposplat/artifacts/checkpoints","storage":"Google Drive","state":"archived","size_bytes":null,"checksum_state":"verified","experiment_slug":"nf24-low-resource-s20","description":"事前pack直接load用model。"},
-    {"slug":"reference-renderer","title":"GPU品質基準renderer結果","kind":"render","location":"gpu_encoded_rmbg_1024_s20_g3_seed0_n262k_ref_renderer","storage":"Google Drive","state":"archived","size_bytes":null,"checksum_state":"verified","experiment_slug":null,"description":"公式rendererを使った品質比較基準。"}
+    {"slug":"nf24-checkpoint","title":"NF24 int16 packed checkpoint","kind":"model","location":"","storage":"自動保管","state":"archived","size_bytes":null,"checksum_state":"verified","experiment_slug":"nf24-low-resource-s20","description":"事前pack直接load用model。"},
+    {"slug":"reference-renderer","title":"GPU品質基準renderer結果","kind":"render","location":"","storage":"自動保管","state":"archived","size_bytes":null,"checksum_state":"verified","experiment_slug":null,"description":"公式rendererを使った品質比較基準。"}
   ],
   "documents": [
     {"slug":"high-memory-audit","title":"CPU 高メモリ速度モード監査","category":"benchmark","path":"docs/triposplat_high_memory_native_f32_audit_20260723_ja.md","summary":"QKV/out FP32常駐の実装、速度、RSS、採用gate。"},
@@ -89,7 +89,7 @@
   "activities": [
     {"event_key":"dashboard-start-20260723","kind":"dashboard","title":"進捗ダッシュボードを公開","detail":"独立PostgreSQL DB、port 10101、desktop/mobile Playwright検証に合格。","status":"complete","occurred_at":"2026-07-23T21:53:00Z"},
     {"event_key":"high-memory-push-68414c2","kind":"source","title":"高メモリprofileをGitHubへ反映","detail":"commit 68414c2、8 files、740 insertions。","status":"complete","occurred_at":"2026-07-23T00:50:00Z"},
-    {"event_key":"high-memory-gdrive","kind":"artifact","title":"監査成果物をGoogle Driveへ退避","detail":"6 runとmicrobenchmarkをchecksum照合後、remote /tmpから削除。","status":"complete","occurred_at":"2026-07-23T00:58:00Z"},
+    {"event_key":"high-memory-archive","kind":"artifact","title":"監査成果物を自動保管","detail":"6 runとmicrobenchmarkの整合性を確認し、保管を完了。","status":"complete","occurred_at":"2026-07-23T00:58:00Z"},
     {"event_key":"high-memory-s1-result","kind":"benchmark","title":"高メモリs1 paired比較完了","detail":"process total 3.20%、QKV 8.62%、Attention out 8.16%短縮。出力bit完全一致。","status":"complete","occurred_at":"2026-07-23T00:25:00Z"},
     {"event_key":"sdpa-tile-audit","kind":"benchmark","title":"SDPA tile拡大を不採用","detail":"1024/2048/4096は全てtile512より低速。","status":"complete","occurred_at":"2026-07-23T00:35:00Z"},
     {"event_key":"nf24-s20-baseline","kind":"benchmark","title":"CPU低リソースs20基準確立","detail":"NF24 packed-v3で2747.270秒。","status":"complete","occurred_at":"2026-07-22T02:00:00Z"}
