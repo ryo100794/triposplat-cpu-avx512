@@ -74,6 +74,24 @@ CREATE TABLE IF NOT EXISTS milestones (
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS optimization_tasks (
+    task_key text PRIMARY KEY,
+    goal_key text NOT NULL,
+    sequence_no integer NOT NULL,
+    title text NOT NULL,
+    objective text NOT NULL,
+    status text NOT NULL CHECK (status IN ('pending','running','review','complete','rejected','blocked')),
+    priority integer NOT NULL,
+    depends_on text[] NOT NULL DEFAULT '{}',
+    acceptance_criteria jsonb NOT NULL DEFAULT '{}'::jsonb,
+    result_summary jsonb NOT NULL DEFAULT '{}'::jsonb,
+    started_at timestamptz,
+    completed_at timestamptz,
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_optimization_tasks_ready
+    ON optimization_tasks(status, priority DESC, sequence_no);
+
 CREATE TABLE IF NOT EXISTS experiments (
     slug text PRIMARY KEY,
     title text NOT NULL,

@@ -149,6 +149,8 @@ def apply_triposplat_native_rnf8_avx512_patch(
     include_regex: str | None = None,
     exclude_regex: str | None = None,
     library_path: str = "artifacts/backends/libtriposplat_gemm_rnf8_avx512.so",
+    optimized_library_path: str | None = None,
+    optimized_shapes: tuple[tuple[int, int], ...] = (),
     threads: int = 2,
     strict: bool = True,
     stages: int = 2,
@@ -207,9 +209,35 @@ def apply_triposplat_native_rnf8_avx512_patch(
     range_kernel.argtypes = [ctypes.c_void_p] * pointer_count + [ctypes.c_int] * 9
     range_kernel.restype = ctypes.c_int
 
+    optimized_shapes_set = {tuple(int(value) for value in shape) for shape in optimized_shapes}
+    optimized_full_kernel = None
+    optimized_lib_path = None
+    optimized_lib = None
+    if optimized_library_path is not None:
+        optimized_lib_path = Path(optimized_library_path)
+        if not optimized_lib_path.is_file():
+            raise FileNotFoundError(optimized_lib_path)
+        optimized_lib = ctypes.CDLL(optimized_lib_path.as_posix())
+        optimized_mode_fn = getattr(optimized_lib, "triposplat_gemm_rnf8_avx512_residual_mode", None)
+        if optimized_mode_fn is None:
+            optimized_mode = "nf8"
+        else:
+            optimized_mode_fn.argtypes = []
+            optimized_mode_fn.restype = ctypes.c_int
+            optimized_mode = {0: "nf8", 1: "symmetric_int8", 4: "nf24_i16"}.get(int(optimized_mode_fn()))
+        if optimized_mode != residual_mode:
+            raise RuntimeError(
+                f"optimized residual quantizer/library mismatch: requested={residual_mode}, "
+                f"library={optimized_mode}"
+            )
+        optimized_full_kernel = optimized_lib.triposplat_gemm_rnf8_avx512
+        optimized_full_kernel.argtypes = [ctypes.c_void_p] * pointer_count + [ctypes.c_int] * 7
+        optimized_full_kernel.restype = ctypes.c_int
+
     runtime = {
         "calls": 0,
         "range_calls": 0,
+        "optimized_calls": 0,
         "rows": 0,
         "seconds": 0.0,
         "contiguous_copies": 0,
@@ -263,16 +291,18 @@ def apply_triposplat_native_rnf8_avx512_patch(
             module._native_rnf8_bias.data_ptr(),
         )
 
-    def record(name: str, rows: int, elapsed: float, is_range: bool):
+    def record(name: str, rows: int, elapsed: float, is_range: bool, optimized: bool = False):
         runtime["calls"] += 1
         runtime["range_calls"] += int(is_range)
+        runtime["optimized_calls"] += int(optimized)
         runtime["rows"] += rows
         runtime["seconds"] += elapsed
         item = runtime["per_module"].setdefault(
-            name, {"calls": 0, "range_calls": 0, "rows": 0, "seconds": 0.0}
+            name, {"calls": 0, "range_calls": 0, "optimized_calls": 0, "rows": 0, "seconds": 0.0}
         )
         item["calls"] += 1
         item["range_calls"] += int(is_range)
+        item["optimized_calls"] += int(optimized)
         item["rows"] += rows
         item["seconds"] += elapsed
 
@@ -282,7 +312,9 @@ def apply_triposplat_native_rnf8_avx512_patch(
             rows = int(x2.shape[0])
             out = torch.empty((rows, int(self.out_features)), dtype=torch.float32)
             code0, code1, code2, scale0, scale1, scale2, codebook_ptr, bias_ptr = pointers(self)
-            kernel = tail_kernel if int(self.out_features) % 16 else full_kernel
+            shape = (int(self.in_features), int(self.out_features))
+            use_optimized = optimized_full_kernel is not None and shape in optimized_shapes_set and shape[1] % 16 == 0
+            kernel = optimized_full_kernel if use_optimized else (tail_kernel if shape[1] % 16 else full_kernel)
             started = time.perf_counter()
             status = int(
                 kernel(
@@ -296,7 +328,7 @@ def apply_triposplat_native_rnf8_avx512_patch(
             if status != 0:
                 runtime["fallbacks"] += 1
                 raise RuntimeError(f"residual NF8 kernel returned {status} for {module_name}")
-            record(module_name, rows, elapsed, False)
+            record(module_name, rows, elapsed, False, use_optimized)
             return out.view(*x.shape[:-1], int(self.out_features))
 
         return forward
@@ -409,6 +441,8 @@ def apply_triposplat_native_rnf8_avx512_patch(
         "activation_dtype": "float32",
         "float32_weight_retained": False,
         "library_path": lib_path.as_posix(),
+        "optimized_library_path": None if optimized_lib_path is None else optimized_lib_path.as_posix(),
+        "optimized_shapes": [list(shape) for shape in sorted(optimized_shapes_set)],
         "row_tile": row_tile,
         "symbols": ["triposplat_gemm_rnf8_avx512", "triposplat_gemm_rnf8_avx512_range", "triposplat_gemm_rnf8_avx512_tail", "triposplat_gemm_rnf8_avx512_row_tile", "triposplat_gemm_rnf8_avx512_residual_mode"],
         "threads": int(threads),

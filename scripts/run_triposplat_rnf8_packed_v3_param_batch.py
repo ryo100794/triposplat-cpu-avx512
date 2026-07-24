@@ -37,8 +37,15 @@ def install_prepacked_loader() -> None:
 
 
 def redirect_native_linear(flow_model, **kwargs):
+    shape_text = os.environ.get("TRIPOSPLAT_RNF8_OPTIMIZED_SHAPES", "")
+    optimized_shapes = tuple(
+        tuple(int(value) for value in item.split("x"))
+        for item in shape_text.split(",") if item
+    )
     return apply_triposplat_native_rnf8_avx512_patch(
         flow_model,
+        optimized_library_path=os.environ.get("TRIPOSPLAT_RNF8_OPTIMIZED_LIBRARY"),
+        optimized_shapes=optimized_shapes,
         stages=int(os.environ.get("TRIPOSPLAT_RNF8_STAGES", "2")),
         residual_mode=os.environ.get("TRIPOSPLAT_RNF8_RESIDUAL_MODE", "nf8"),
         **kwargs,

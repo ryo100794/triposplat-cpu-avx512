@@ -99,8 +99,6 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"experiments": data.fetch_experiments()})
             elif path == "/api/artifacts":
                 self._json(data.fetch_artifacts())
-            elif path == "/api/activity":
-                self._json({"activity": data.fetch_activity()})
             elif path.startswith("/api/previews/"):
                 value = path.removeprefix("/api/previews/")
                 self._preview(int(value)) if value.isdigit() else self._error(HTTPStatus.NOT_FOUND, "not found")

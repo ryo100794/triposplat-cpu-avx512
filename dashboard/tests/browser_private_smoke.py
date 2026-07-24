@@ -8,7 +8,11 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 
-FORBIDDEN = ("/workspace", "213.173.", "127.0.0.1", "cdaa59d20af0", "AMD EPYC")
+FORBIDDEN = (
+    "/workspace", "213.173.", "127.0.0.1", "cdaa59d20af0", "AMD EPYC",
+    "gdrive", "google drive", "postgresql", "queue", "worker", "rclone",
+    "lease", "heartbeat", "checksum", "database",
+)
 
 
 def main() -> int:
@@ -30,12 +34,17 @@ def main() -> int:
             assert page.locator("#journey .journey-item").count() == 9
             assert "非線形24-bit" in page.locator(".nf24-note").inner_text()
             body = page.locator("body").inner_text()
-            assert not any(value in body for value in FORBIDDEN)
+            body_lower = body.lower()
+            assert not any(value.lower() in body_lower for value in FORBIDDEN)
 
             overview_text = page.request.get(f"{args.url}/api/overview").text()
             artifacts_text = page.request.get(f"{args.url}/api/artifacts").text()
-            assert not any(value in overview_text or value in artifacts_text for value in FORBIDDEN)
+            health_text = page.request.get(f"{args.url}/api/health").text()
+            public_responses = (overview_text + artifacts_text + health_text).lower()
+            assert not any(value.lower() in public_responses for value in FORBIDDEN)
             assert '"location"' not in artifacts_text and '"path"' not in artifacts_text
+            assert '"storage"' not in artifacts_text and '"checksum_state"' not in artifacts_text
+            assert '"task_type"' not in overview_text and '"schedule_key"' not in overview_text
 
             page.locator('[data-view="artifacts"]').click()
             assert page.locator("#visual-gallery .preview-card").count() == 3

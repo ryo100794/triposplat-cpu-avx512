@@ -57,8 +57,8 @@ function renderOverview() {
   $("#pipeline-track").innerHTML=milestones.map((item)=>`<article class="pipeline-item ${escapeHtml(item.status)}"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.stage)} · ${item.progress}%</span><div class="mini-progress"><i style="width:${Math.max(0,Math.min(100,item.progress))}%"></i></div></article>`).join("");
   $("#benchmark-chart").innerHTML=(data.settings?.benchmark_chart||[]).map((item)=>`<div class="benchmark-row ${escapeHtml(item.tone||"")}"><div class="benchmark-label"><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.detail)}</span></div><div class="bar-track"><div class="bar-value" style="width:${Math.max(2,Math.min(100,item.bar_percent))}%"></div></div><span class="benchmark-delta">${escapeHtml(item.delta)}</span></div>`).join("");
   $("#gate-list").innerHTML=(data.settings?.admission_gates||[]).map((item,index)=>`<div class="gate-item ${item.done?"done":""}"><span class="gate-marker">${item.done?"✓":index+1}</span><div><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.detail)}</span></div></div>`).join("");
-  const job=data.maintenance?.latest_job||{}; const schedule=data.maintenance?.schedule||{}; const summary=job.result_summary||{};
-  $("#maintenance-status").innerHTML=[["状態",job.status||"登録待ち"],["実行間隔",schedule.interval_seconds?`${Math.round(schedule.interval_seconds/60)}分`:"--"],["直近の退避",`${summary.archived_count||0}件`],["退避容量",bytes(summary.archived_bytes||0)]].map(([label,value])=>`<div class="maintenance-cell"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
+  const retention=data.retention||{}; const retentionState={completed:"保管済み",running:"処理中",pending:"確認待ち",queued:"確認待ち",failed:"要確認"};
+  $("#maintenance-status").innerHTML=[["保管状況",retentionState[retention.status]||"確認待ち"],["確認間隔",retention.cycle_minutes?`${retention.cycle_minutes}分`:"--"],["直近の保管",`${retention.recent_items||0}件`],["保管容量",bytes(retention.recent_bytes||0)]].map(([label,value])=>`<div class="maintenance-cell"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
 }
 
 function renderExperimentDetail(item) {
@@ -75,7 +75,7 @@ function renderExperiments() {
 
 function openPreview(preview,title) { $("#dialog-image").src=preview.url; $("#dialog-image").alt=preview.caption||title; $("#dialog-title").textContent=title; $("#dialog-caption").textContent=preview.caption||"生成結果"; $("#preview-dialog").showModal(); }
 function renderArtifacts(query="") {
-  const term=query.trim().toLowerCase(); const artifacts=state.artifacts.filter((item)=>[item.title,item.kind,item.storage,item.description].join(" ").toLowerCase().includes(term));
+  const term=query.trim().toLowerCase(); const artifacts=state.artifacts.filter((item)=>[item.title,item.kind,item.description].join(" ").toLowerCase().includes(term));
   const documents=state.documents.filter((item)=>[item.title,item.category,item.summary].join(" ").toLowerCase().includes(term));
   const previews=artifacts.flatMap((artifact)=>(artifact.previews||[]).map((preview)=>({artifact,preview})));
   $("#visual-gallery").innerHTML=previews.map(({artifact,preview})=>`<button class="preview-card" type="button" data-preview="${preview.id}"><span class="preview-frame"><img src="${escapeHtml(preview.url)}" alt="${escapeHtml(preview.caption||artifact.title)}" loading="lazy"></span><span class="preview-copy"><strong>${escapeHtml(artifact.title)}</strong><small>${escapeHtml(preview.caption||"生成結果")}</small></span></button>`).join("")||'<p class="empty-state">プレビューを準備中です</p>';
